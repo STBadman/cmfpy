@@ -2,3 +2,4 @@
 ./CHmetric/data/*
 ./WLmetric/data/*  
 ./NLmetric/data/*
+.DS_Store
