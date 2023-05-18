@@ -1,0 +1,4 @@
+.ipynb_checkpoints/
+./CHmetric/data/*
+./WLmetric/data/*  
+./NLmetric/data/*
