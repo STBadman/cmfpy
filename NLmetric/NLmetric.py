@@ -1,3 +1,11 @@
+'''
+This module shall provide capability to :
+1) <CREATE MEASURED BR TIMESERIES> Given input spacecraft and timestamp, compute 1 hour 
+most probable polarity for 1 carrington rotation centered on timestamp
+2) <CREATE PREDICTED BR TIMESERIES> Given model NL, input spacecraft and timestamp, compute predicted timeseries of polarity  
+3) <DO NL SCORE> Read in measured and predicted Br, compute NL Score
+'''
+
 import numpy as np
 
 def lookupNearest(x0, y0, x, y, data):
