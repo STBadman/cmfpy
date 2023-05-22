@@ -5,14 +5,58 @@ most probable polarity for 1 carrington rotation centered on timestamp
 2) <CREATE PREDICTED BR TIMESERIES> Given model NL, input spacecraft and timestamp, compute predicted timeseries of polarity  
 3) <DO NL SCORE> Read in measured and predicted Br, compute NL Score
 '''
+import astropy.units as u
 
+def create_br_obs(center_date,spacecraft,save_dir="./") :
+    '''
+    Given `center_date`:`datetime.datetime` and `spacecraft`*:`str`,
+    1) determine the time interval required to span a Carrington 
+    rotation worth of data, producing t_start, t_end
+    2) download measured magnetic field data from the relevant
+     spacecraft* between those dates
+    3) For every hour, compute a histogram of measurements and find the
+    most probable measurement, take its sign to obtain polarity
+    4) Return timeseries and save in save_dir.
+
+    * should validate spacecraft spice kernels are accessible via
+    astrospice
+    '''
+    pass
+
+def create_br_model(model_NL_map, center_date, spacecraft,
+                    altitude=2.5*u.R_sun,save_dir="./") :
+    '''
+    Given `model_NLmap` (modeled neutral line map user provided), 
+    `center_date`:`datetime.datetime` (which should match the 
+    magnetogram date of the neutral line map) and an astrospice-valid
+    `spacecraft`:`str`: 
+    1) Determine the time interval required to span a Carrington
+    rotation worth of data, producing `t_start`, `t_end`
+    2) construct a ballistically mapped trajectory of the spacecraft 
+    at the altitude of the model NL map (default 2.5Rs) between those
+    two dates. 
+    3) Fly spacecraft over the NL map and sample the predicted magnetic
+    polarity as a function of time
+    4) Return predicted timeseries and save in save_dir
+    '''
+    pass
+
+def compute_NL_metric(model_tseries,obs_tseries) :
+    '''
+    Given `model_tseries` and `obs_tseries`, ensure the timestamps are
+    aligned, compute the dot product of the data, and divide by the
+    number of the datapoints to obtain the NL_metric score.
+    '''
+    pass
+
+'''
 import numpy as np
 
 def lookupNearest(x0, y0, x, y, data):
      xi = np.abs(x-x0).argmin()
      yi = np.abs(y-y0).argmin()
      return data[yi,xi]
-
+'''
 
 
 '''
