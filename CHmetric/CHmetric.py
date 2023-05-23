@@ -9,6 +9,7 @@ compute precision, recall and f-score
 '''
 import astropy.units as u
 import datetime
+from CHmetric import ezseg
 import os
 import numpy as np
 from sunpy.coordinates.sun import L0
@@ -100,13 +101,45 @@ def create_euv_map(center_date,
     ## Return output map filename
     return savepath
 
-def extract_obs_ch(euv_map,save_dir='./') :
+def extract_obs_ch(euv_map_path,
+                   replace=False,
+                   save_dir='./CHmetric/data/',
+                   ezseg_version="python" # will add fortran wrapper option
+                   ) :
     '''
     Given `euv_map` fits file, read in, apply the EZSEG module, to 
     extract coronal hole contours. Convert contours to open and 
     closed pixels, create sunpy.map, save as fits file in `save_dir` 
     '''
-    pass
+    savepath = f"{save_dir}/{os.path.basename(euv_map_path)[:-5]}_ch_extracted.fits" 
+
+    ## Run only if file does not already exist or if
+    ## `replace == True`
+    if not os.path.exists(savepath) or replace :
+        euv_map = sunpy.map.Map(euv_map_path) 
+        euvmap_array= euv_map.data
+        valid_data = ~np.isnan(euvmap_array)
+
+        ### Parameters for EZSEG 
+        thresh1 = 50 ## Seed threshold
+        thresh2 = 100 ## Growing Threshhold
+        nc = 7 ## at least 7 consecutive pixels to declare coronal hole area is connected
+        iters = 100 # Do maximum 100 iterations
+        ### 
+
+        ## Python version via D. H. Brooks
+        segmented_array = ezseg.ezseg_algorithm(euvmap_array, ## Data to extract contours from
+                                                valid_data, ## Valid pixels
+                                                euvmap_array.shape[0], ## x-dimension of array
+                                                euvmap_array.shape[1], ## y-dimension of array
+                                                thresh1,thresh2,nc,iters ## EZSEG input params defined above
+                                            )
+        
+        ## Cast to sunpy.map and save as fits file
+        ch_map_obs = sunpy.map.Map(segmented_array.astype(float),euv_map.meta)
+        ch_map_obs.save(savepath)
+
+    return savepath
 
 def do_ch_score(ch_map_model, ch_map_obs,auto_interp=False) :
     '''
