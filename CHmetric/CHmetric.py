@@ -19,6 +19,7 @@ import sys
 
 def create_euv_map(center_date,
                    euv_obs_cadence=1*u.day,
+                   gaussian_filter_width = 30*u.deg,
                    save_dir='./CHmetric/data/'
                    ) :
     '''
@@ -78,11 +79,10 @@ def create_euv_map(center_date,
         )
 
         ### Compute a gaussian weight for each pixel in each map.
-        gaussian_width_lon = 60
         gaussian_weights = [
         np.exp(-((sunpy.map.all_coordinates_from_map(m).lon.to("deg").value 
                 -L0(m.date).to("deg").value + 180) % 360 - 180)**2
-            /(2*gaussian_width_lon**2)
+            /(2*gaussian_filter_width.to("deg").value**2)
             ) 
         for m in carrington_maps
         ]
@@ -104,7 +104,12 @@ def create_euv_map(center_date,
 def extract_obs_ch(euv_map_path,
                    replace=False,
                    save_dir='./CHmetric/data/',
-                   ezseg_version="python" # will add fortran wrapper option
+                   ezseg_version="python", # will add fortran wrapper option
+                   ezseg_params = {"thresh1":10, ## Seed threshold
+                                   "thresh2":75, ## Growing Threshhold
+                                   "nc":7, ## at least 7 consecutive pixels to declare coronal hole area is connected
+                                   "iters":100 # Do maximum 100 iterations
+                                   }
                    ) :
     '''
     Given `euv_map` fits file, read in, apply the EZSEG module, to 
@@ -120,24 +125,20 @@ def extract_obs_ch(euv_map_path,
         euvmap_array= euv_map.data
         valid_data = ~np.isnan(euvmap_array)
 
-        ### Parameters for EZSEG 
-        thresh1 = 50 ## Seed threshold
-        thresh2 = 100 ## Growing Threshhold
-        nc = 7 ## at least 7 consecutive pixels to declare coronal hole area is connected
-        iters = 100 # Do maximum 100 iterations
-        ### 
-
         ## Python version via D. H. Brooks
         segmented_array = ezseg.ezseg_algorithm(euvmap_array, ## Data to extract contours from
                                                 valid_data, ## Valid pixels
                                                 euvmap_array.shape[0], ## x-dimension of array
                                                 euvmap_array.shape[1], ## y-dimension of array
-                                                thresh1,thresh2,nc,iters ## EZSEG input params defined above
+                                                ezseg_params["thresh1"],
+                                                ezseg_params["thresh2"],
+                                                ezseg_params["nc"],
+                                                ezseg_params["iters"]
                                             )
         
         ## Cast to sunpy.map and save as fits file
         ch_map_obs = sunpy.map.Map(segmented_array.astype(float),euv_map.meta)
-        ch_map_obs.save(savepath)
+        ch_map_obs.save(savepath,overwrite=replace)
 
     return savepath
 
