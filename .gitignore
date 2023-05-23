@@ -1,6 +1,4 @@
 .ipynb_checkpoints/
-./CHmetric/data/*
-./WLmetric/data/*  
-./NLmetric/data/*
 .DS_Store
 __pycache__
+*.fits
