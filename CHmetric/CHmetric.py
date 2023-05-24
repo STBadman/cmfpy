@@ -7,12 +7,15 @@ fits file
 3) <DO CH SCORE> Read in an "observed CH" map and "modeled CH" map, 
 compute precision, recall and f-score
 '''
+from astropy.coordinates import SkyCoord
 import astropy.units as u
 import datetime
 from CHmetric import ezseg
 import os
 import numpy as np
-from sunpy.coordinates.sun import L0
+import pandas as pd
+from pfsspy import utils as pfss_utils
+from sunpy.coordinates import get_earth, sun
 from sunpy.net import Fido, attrs as a
 import sunpy.map
 import sys
@@ -20,7 +23,8 @@ import sys
 def create_euv_map(center_date,
                    euv_obs_cadence=1*u.day,
                    gaussian_filter_width = 30*u.deg,
-                   save_dir='./CHmetric/data/'
+                   save_dir='./CHmetric/data/',
+                   replace=False
                    ) :
     '''
     Given `center_date`:`datetime.datetime` download a Carrington 
@@ -35,7 +39,7 @@ def create_euv_map(center_date,
     ## First, check if map centered on center_date has already been created 
     ## if it has, jump straight to the end.
     savepath = f"{save_dir}/{center_date.strftime('%Y-%m-%d')}.fits"
-    if not os.path.exists(savepath) :
+    if not os.path.exists(savepath) or replace :
 
         ## Use sunpy Fido to search for AIA 193 data over a carrinton rotation
         ### If the downloads succeed once, they are archived on your computer in
@@ -81,7 +85,7 @@ def create_euv_map(center_date,
         ### Compute a gaussian weight for each pixel in each map.
         gaussian_weights = [
         np.exp(-((sunpy.map.all_coordinates_from_map(m).lon.to("deg").value 
-                -L0(m.date).to("deg").value + 180) % 360 - 180)**2
+                -sun.L0(m.date).to("deg").value + 180) % 360 - 180)**2
             /(2*gaussian_filter_width.to("deg").value**2)
             ) 
         for m in carrington_maps
@@ -95,8 +99,13 @@ def create_euv_map(center_date,
                 ],
                 axis=0),ref_header)
 
+        ### Align LH edge with Carrington 0 for consistency
+        combined_map_gaussian_weights_roll = pfss_utils.roll_map(
+            combined_map_gaussian_weights)
+
         ## Save output combined map as fits file
-        combined_map_gaussian_weights.save(savepath)  
+        combined_map_gaussian_weights_roll.save(savepath,
+                                                overwrite=replace)  
 
     ## Return output map filename
     return savepath
@@ -122,8 +131,8 @@ def extract_obs_ch(euv_map_path,
     ## `replace == True`
     if not os.path.exists(savepath) or replace :
         euv_map = sunpy.map.Map(euv_map_path) 
-        euvmap_array= euv_map.data
-        valid_data = ~np.isnan(euvmap_array)
+        euvmap_array= np.log10(euv_map.data)
+        valid_data = ~np.isnan(euv_map.data)
 
         ## Python version via D. H. Brooks
         segmented_array = ezseg.ezseg_algorithm(euvmap_array, ## Data to extract contours from
@@ -137,18 +146,58 @@ def extract_obs_ch(euv_map_path,
                                             )
         
         ## Cast to sunpy.map and save as fits file
-        ch_map_obs = sunpy.map.Map(segmented_array.astype(float),euv_map.meta)
+        ch_map_obs = sunpy.map.Map(np.invert(segmented_array).astype(float),euv_map.meta)
         ch_map_obs.save(savepath,overwrite=replace)
 
     return savepath
 
-def do_ch_score(ch_map_model, ch_map_obs,auto_interp=False) :
+def csv2map(csvpath,datetime_csv) :
+    data = np.array(pd.read_csv(csvpath,index_col=0,header=0,dtype=float))[1:,1:]
+
+    header = pfss_utils.carr_cea_wcs_header(datetime_csv,
+                                            data.T.shape,
+                                            map_center_longitude=180*u.deg
+                                            )
+
+    return sunpy.map.Map(data,header)
+
+def do_ch_score(dt_model, chmap_model, chmap_obs,auto_interp=False) :
     '''
     Given model coronal hole binary map `ch_map_model` and observed 
     coronal hole binary map `ch_map_obs`, read both in, validate the
-    dimensions are the same, if `auto_interp` automatically try to
-    resample, if not `auto_interp` raise error if dimensions don't 
-    match. Once validation is complete, compute precision, recall and
-    f-score on the two binary maps.
+    dimensions and y-axis projection are the same, if `auto_interp` 
+    automatically try to resample, if not `auto_interp` raise error 
+    if dimensions don't match. Once validation is complete, compute 
+    precision, recall and f-score on the two binary maps.
     '''
-    pass
+    chmap_model = csv2map(chmap_model, dt_model)
+    chmap_obs = sunpy.map.Map(chmap_obs)
+    if auto_interp :
+        chmap_obs = chmap_obs.reproject_to(chmap_model.wcs)
+    
+    ## Check maps are the same shape and projection, to safely to 
+    # binary computation
+    assert (chmap_model.data.shape == chmap_obs.data.shape), \
+        "Input maps shapes do not match, setting auto_interp=True" \
+        + " will attempt to reproject the observed map to the shape" \
+        + " of the modeled map."
+    assert (chmap_model.meta['ctype2'] == chmap_obs.meta['ctype2']), \
+        "Input maps projections do not match, setting auto_interp=True" \
+        + " will attempt to reproject the observed map to the shape" \
+        + " of the modeled map."
+    
+    ## Do Binary Computation
+    model_bool = chmap_model.data.astype(bool)
+    obs_bool = chmap_obs.data.astype(bool)
+
+    ## Recall pixel value 1 = magnetically open/coronal hole, 
+    # 0 = magnetically closed, not coronal hole
+    tp = np.sum(model_bool & obs_bool) # True positive : pixel value 1 in model and obs
+    fp = np.sum(model_bool & ~obs_bool) # False Positive : pixel value 1 in model and 0 in obs
+    fn = np.sum(~model_bool & obs_bool) # False Negative : pixel value 0 in model and 1 in obs
+
+    p = tp/(tp+fp) # precision : fraction of predicted open pixels which are actually open
+    r = tp/(tp+fn) # recall : fraction of observed open pixels which are correctly predicted 
+    f = 2*p*r/(p+r) # f-score : harmonic mean of p and r
+
+    return p, r, f
