@@ -42,11 +42,22 @@ def read_NL_SAM(NL_fullpath):
     return(NL_phi_edges,NL_th_edges)
 
 def read_WL_map(WL_fullpath,source):
-    match source:
-        case 'connect_tool':
-            [WL_I,WL_pphi,WL_tth,WL_I_edges,WL_pphi_edges,WL_tth_edges]=read_WL_map_connecttool(WL_fullpath)
-        case 'V1.1':
-            [WL_I,WL_pphi,WL_tth,WL_I_edges,WL_pphi_edges,WL_tth_edges]=read_WL_map_V1p1(WL_fullpath)
+    sources = ['connect_tool',"V1.1"]
+    if source=='connect_tool':
+        [WL_I,
+         WL_pphi,
+         WL_tth,
+         WL_I_edges,
+         WL_pphi_edges,
+         WL_tth_edges]=read_WL_map_connecttool(WL_fullpath)
+    elif source=='V1.1':
+        [WL_I,
+         WL_pphi,
+         WL_tth,
+         WL_I_edges,
+         WL_pphi_edges,
+         WL_tth_edges]=read_WL_map_V1p1(WL_fullpath)
+    else : raise ValueError(f"Source {source} not in {sources}")
     return(WL_I,WL_pphi,WL_tth,WL_I_edges,WL_pphi_edges,WL_tth_edges)
     
 def read_WL_map_connecttool(WL_fullpath):
@@ -106,12 +117,14 @@ def read_WL_map_V1p1(WL_fullpath):
     return(WL_I,WL_pphi,WL_tth,WL_I_edges,WL_pphi_edges,WL_tth_edges)
 
 def get_WL_map(WL_date_in,WL_path,WL_source):
-    match WL_source:
-        case 'connect_tool':
+    sources = ['connect_tool',"V1.1"]
+    if WL_source=='connect_tool':
             WL_fullpath = get_WL_map_connecttool(WL_date_in,WL_path)
             WL_date = WL_date_in
-        case 'V1.1':
-            [WL_fullpath,WL_date] = get_WL_map_local(WL_date_in,WL_path)
+    elif WL_source=='V1.1':
+            [WL_fullpath,WL_date] = get_WL_map_local(WL_date_in,
+                                                     WL_path)
+    else : raise ValueError(f"Source {WL_source} not in {sources}")
     return(WL_fullpath,WL_date)
             
 # Fetch WL map from the public *connect_tool* web server
@@ -134,6 +147,8 @@ def get_WL_map_connecttool(WL_date,WL_path):
         #Download the .zip collection file
         print("Fetching WL map from : "+ url_static)
         WL_path_tmp = os.path.join(WL_path,'C2','connect_tool')
+        print(WL_path_tmp)
+        if not os.path.exists(WL_path_tmp) : os.makedirs(WL_path_tmp)
         zip_fullpath = wget.download(url_static,out=WL_path_tmp)
 
         #Extract WL map .png map from .zip archive
