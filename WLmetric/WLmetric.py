@@ -6,7 +6,11 @@ This module shall provide capability to :
 '''
 
 import astropy.units as u
+from astropy.coordinates import SkyCoord
+import numpy as np
 import WLmetric.io_functions # functions to read in maps from different sources
+from scipy.ndimage import gaussian_filter1d
+import sunpy.map
 
 #Score functions definitions
 def sigmoid(x,a,b):
@@ -23,22 +27,45 @@ def create_WL_map(center_date, coronagraph_altitude=3*u.R_sun) :
     '''
     pass
 
-def extract_SMB(wl_map,save_dir='./') :
+def extract_edge_coords(wl_map) :
+
+    WL_I = wl_map.data
+
+    #Reconstruct the grid coordinates
+    WL_phi_edges = np.linspace(0,360,num=np.size(WL_I,1)+1) #pixel edges
+    WL_th_edges = np.linspace(-90,90,num=np.size(WL_I,0)+1) #pixel edges
+    [WL_pphi_edges, WL_tth_edges] = np.meshgrid(WL_phi_edges, WL_th_edges)
+    WL_phi = (WL_phi_edges[1:]+WL_phi_edges[0:-1])/2 #pixel centres
+    WL_th = (WL_th_edges[1:]+WL_th_edges[0:-1])/2 #pixel centres
+    [WL_pphi, WL_tth] = np.meshgrid(WL_phi, WL_th)
+    
+    #Input image is cell-centered -> conversion to edge values
+    WL_I_edges = np.empty((np.size(WL_th_edges,0),np.size(WL_phi_edges,0)))
+    WL_I_edges[1:-1,1:-1] = (WL_I[:-1,:-1]+WL_I[1:,1:])/2
+    WL_I_edges[1:-1,0] = (WL_I[:-1,0]+WL_I[1:,-1])/2
+    WL_I_edges[1:-1,-1] = (WL_I[:-1,0]+WL_I[1:,-1])/2
+    WL_I_edges[0,1:-1] = (WL_I[0,:-1]+WL_I[-1,1:])/2
+    WL_I_edges[-1,1:-1] = (WL_I[0,:-1]+WL_I[-1,1:])/2
+    WL_I_edges[[0,0,-1,-1],[0,-1,0,-1]] = 0.
+
+    return WL_pphi_edges, WL_tth_edges, WL_I_edges
+
+
+def extract_SMB(wl_map,smoothing_factor=20,save_dir='./WLmetric/data/') :
     '''
     Given a precomputed input White light carrington map (`wl_map`),
     extract the streamer maximum brightness (SMB) line, and the 
     half brightness contour as a function of longitude. (Following 
     Poirier+2021, Badman+2022). Save in `save_dir` 
     '''
-    pass
-
-def compute_SMB(WL_I_edges,WL_pphi_edges,WL_th_edges,smoothing_factor):
+    WL_pphi_edges,WL_tth_edges,WL_I_edges = extract_edge_coords(wl_map)
+    
     #Find maximal brightness for each longitude
     idx_max = np.nanargmax(WL_I_edges,axis=0)
 
     #Fetch coordinates of these maxima
     SMB_phi_edges = WL_pphi_edges[0,:].flatten()
-    SMB_th_edges = WL_th_edges[idx_max,0].flatten()
+    SMB_th_edges = WL_tth_edges[idx_max,0].flatten()
 
     #Before smoothing the curve, repeat data at each side
     n_extend = int(smoothing_factor/2)+1;
@@ -49,8 +76,14 @@ def compute_SMB(WL_I_edges,WL_pphi_edges,WL_th_edges,smoothing_factor):
 
     #Shrink back to initial range
     SMB_th_edges = SMB_th_extended[(n_extend-1):-(n_extend-1)+1];
-
-    return(SMB_phi_edges,SMB_th_edges)
+    return SkyCoord(lon=SMB_phi_edges*u.deg,
+                    lat=SMB_th_edges*u.deg,
+                    radius=[1*u.R_sun]*len(SMB_phi_edges),
+                    frame="heliographic_carrington",
+                    observer=wl_map.observer_coordinate,
+                    obstime=wl_map.observer_coordinate.obstime,
+                    representation_type="spherical"
+                    )
 
 def compute_min_dist(phi1,th1,phi2,th2):
     #Cpmpute angular distance (i.e. central angle) between all these points

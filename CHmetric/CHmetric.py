@@ -19,6 +19,7 @@ from sunpy.coordinates import get_earth, sun
 from sunpy.net import Fido, attrs as a
 import sunpy.map
 import sys
+import helpers as h
 
 def create_euv_map(center_date,
                    euv_obs_cadence=1*u.day,
@@ -68,8 +69,9 @@ def create_euv_map(center_date,
         sys.stdout.write(f"Reprojecting {len(carrington_rotation)} Maps: \n")
         for ii,m in enumerate(carrington_rotation) :
             sys.stdout.write(f"{ii+1:02d}/{len(carrington_rotation)}\r")
-            header =  sunpy.map.make_heliographic_header(m.date, m.observer_coordinate, 
-                                            shape_out, frame='carrington')
+            header =  sunpy.map.make_heliographic_header(
+                m.date, m.observer_coordinate,shape_out, frame='carrington'
+                )
             carrington_maps.append(m.reproject_to(header))
         
         ## Combine maps together with gaussian weighting
@@ -78,7 +80,7 @@ def create_euv_map(center_date,
         ref_map = carrington_rotation[14]
         ref_date = ref_map.meta['date-obs']
         ref_coord = ref_map.observer_coordinate
-        ref_header = sunpy.map.header_helper.make_heliographic_header(
+        ref_header = sunpy.map.make_heliographic_header(
             ref_map.date, ref_coord, shape_out, frame="carrington"
         )
 
@@ -151,16 +153,6 @@ def extract_obs_ch(euv_map_path,
 
     return savepath
 
-def csv2map(csvpath,datetime_csv) :
-    data = np.array(pd.read_csv(csvpath,index_col=0,header=0,dtype=float))[1:,1:]
-
-    header = pfss_utils.carr_cea_wcs_header(datetime_csv,
-                                            data.T.shape,
-                                            map_center_longitude=180*u.deg
-                                            )
-
-    return sunpy.map.Map(data,header)
-
 def do_ch_score(dt_model, chmap_model, chmap_obs,auto_interp=False) :
     '''
     Given model coronal hole binary map `ch_map_model` and observed 
@@ -170,7 +162,7 @@ def do_ch_score(dt_model, chmap_model, chmap_obs,auto_interp=False) :
     if dimensions don't match. Once validation is complete, compute 
     precision, recall and f-score on the two binary maps.
     '''
-    chmap_model = csv2map(chmap_model, dt_model)
+    chmap_model = h.csv2map(chmap_model, dt_model)
     chmap_obs = sunpy.map.Map(chmap_obs)
     if auto_interp :
         chmap_obs = chmap_obs.reproject_to(chmap_model.wcs)

@@ -8,6 +8,8 @@ from datetime import datetime
 import wget
 import zipfile
 import requests
+import sunpy.map
+from sunpy.coordinates import get_earth
 
 def read_NL_SAM(NL_fullpath): 
     with open(NL_fullpath, newline='') as csvfile:
@@ -59,7 +61,34 @@ def read_WL_map(WL_fullpath,source):
          WL_tth_edges]=read_WL_map_V1p1(WL_fullpath)
     else : raise ValueError(f"Source {source} not in {sources}")
     return(WL_I,WL_pphi,WL_tth,WL_I_edges,WL_pphi_edges,WL_tth_edges)
+
+def WLfile2map(WL_fullpath,WL_date,WL_source):
+    if WL_source == "connect_tool" :
+        WL_I = mpimg.imread(WL_fullpath) #cell-centered valued
+
+        # Convert from RGB to grayscale
+        def rgb2gray(I):
+            return np.dot(I[...,:3], [0.2989, 0.5870, 0.1140])
+        WL_I = rgb2gray(WL_I)[::-1,:]
+
+    elif WL_source == "V1.1" :
+        WL_I_edges = fits.getdata(WL_fullpath,ext=0)
+        
+        #If latitude columns are full of nan, replace by zeros
+        idx_nan = ~np.any(~np.isnan(WL_I_edges),axis=0)
+        WL_I_edges[np.tile(idx_nan[:,np.newaxis].T,
+                           (WL_I_edges.shape[0],1))] = 0.
+
+        WL_I = (WL_I_edges[:-1,:-1]+WL_I_edges[1:,1:])/2
+
+    header = sunpy.map.header_helper.make_heliographic_header(
+        WL_date, get_earth(WL_date),WL_I.shape, frame='carrington'
+    )
+    ## Fix header metadata to place CR0 at LH edge of map
+    header['crval1']=180.0
     
+    return sunpy.map.Map(WL_I,header)
+        
 def read_WL_map_connecttool(WL_fullpath):
     WL_I = mpimg.imread(WL_fullpath) #cell-centered valued
 
@@ -116,14 +145,20 @@ def read_WL_map_V1p1(WL_fullpath):
     
     return(WL_I,WL_pphi,WL_tth,WL_I_edges,WL_pphi_edges,WL_tth_edges)
 
-def get_WL_map(WL_date_in,WL_path,WL_source):
+import glob
+def get_WL_map(WL_date,WL_path,WL_source,replace=False):
     sources = ['connect_tool',"V1.1"]
     if WL_source=='connect_tool':
-            WL_fullpath = get_WL_map_connecttool(WL_date_in,WL_path)
-            WL_date = WL_date_in
+            already_downloaded = glob.glob(f"{WL_path}/C2/connect_tool/*.png")
+            WL_fullpath = None
+            for filepath in already_downloaded :
+                if WL_date.strftime("%Y%m%d") in os.path.basename(filepath)  :
+                    WL_fullpath = filepath
+                    break
+            if WL_fullpath is None : 
+                WL_fullpath = get_WL_map_connecttool(WL_date,WL_path)
     elif WL_source=='V1.1':
-            [WL_fullpath,WL_date] = get_WL_map_local(WL_date_in,
-                                                     WL_path)
+            [WL_fullpath,WL_date] = get_WL_map_local(WL_date,WL_path)
     else : raise ValueError(f"Source {WL_source} not in {sources}")
     return(WL_fullpath,WL_date)
             
@@ -147,7 +182,6 @@ def get_WL_map_connecttool(WL_date,WL_path):
         #Download the .zip collection file
         print("Fetching WL map from : "+ url_static)
         WL_path_tmp = os.path.join(WL_path,'C2','connect_tool')
-        print(WL_path_tmp)
         if not os.path.exists(WL_path_tmp) : os.makedirs(WL_path_tmp)
         zip_fullpath = wget.download(url_static,out=WL_path_tmp)
 
@@ -168,7 +202,7 @@ def get_WL_map_connecttool(WL_date,WL_path):
 # Fetch WL map from the local database
 def get_WL_map_local(WL_date,WL_path):
     WL_path_tmp = os.path.join(WL_path,'C2','V1.1(ISSI)')
-    
+    if not os.path.exists(WL_path_tmp) : os.makedirs(WL_path_tmp)
     files = []
     dates = []
     dates_diff = []
