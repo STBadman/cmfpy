@@ -11,6 +11,7 @@ import numpy as np
 import WLmetric.io_functions # functions to read in maps from different sources
 from scipy.ndimage import gaussian_filter1d
 import sunpy.map
+from scipy.interpolate import interp1d
 
 #Score functions definitions
 def sigmoid(x,a,b):
@@ -86,30 +87,29 @@ def extract_SMB(wl_map,smoothing_factor=20,save_dir='./WLmetric/data/') :
                     representation_type="spherical"
                     )
 
-def compute_min_dist(model_map, wl_map) :
-#def compute_min_dist(phi1,th1,phi2,th2):
+#def compute_min_dist(model_map, wl_map) :
+def compute_min_dist(phi1,th1,phi2,th2):
+
     #Cpmpute angular distance (i.e. central angle) between all these points
     #see: https://en.wikipedia.org/wiki/Great-circle_distance
-
-    ### Extract two curves to compare
-    nl_model = model_map.contour([0])[0] ### ASSUMES ONLY ONE CONTOUR, CAUTION!
-    smb_obs = extract_SMB(wl_map)
-
-    ### Interpolate to same longitude gridpoints
-
+    phi1=phi1.to("rad").value
+    th1=th1.to("rad").value
+    phi2=phi2.to("rad").value
+    th2=th2.to("rad").value
 
     dphi = np.abs(phi2-phi1)
     dth = np.abs(th2-th1)
-    sigma = np.arctan2(np.sqrt((np.cos(th2)*np.sin(dphi))**2+(np.cos(th1)*np.sin(th2)-np.sin(th1)*np.cos(th2)*np.cos(dphi))**2),(np.sin(th1)*np.sin(th2)+np.cos(th1)*np.cos(th2)*np.cos(dphi)))
-    sigma *= 180/np.pi
+    sigma = np.arctan2(np.sqrt((np.cos(th2)*np.sin(dphi))**2+(np.cos(th1)*np.sin(th2)-np.sin(th1)*np.cos(th2)*np.cos(dphi))**2),
+                       (np.sin(th1)*np.sin(th2)+np.cos(th1)*np.cos(th2)*np.cos(dphi))
+                       )*u.rad
 
     #Find the minimum angle distances between NL and SMB
     sigma_min = np.min(sigma,axis=0)
     idx_min = np.argmin(sigma,axis=0) #just for plotting
 
-    return(sigma_min,idx_min)
+    return(sigma_min.to("deg"),idx_min)
 
-def compute_WL_score(model_nl_map,smb_obs) :
+def compute_WL_score(model_nl_map,obs_wl_map,norm_mode="fixed") :
     '''
     Given `model_nl_map` (user provided) and a precomputed `smb_obs`
     dataset describing the coronagraph-observed neutral line, extract
@@ -117,9 +117,41 @@ def compute_WL_score(model_nl_map,smb_obs) :
     the average angular distance between the two 1d curves weighted by
     the local streamer belt thickness. 
     '''
+    norm_mode_all = ["fixed","SB_thickness"]
+ 
+    ### Extract two curves to compare
+    nl_model = model_nl_map.contour([0])[0] ### ASSUMES ONLY ONE CONTOUR, CAUTION!
+    nl_lon,nl_lat = nl_model.lon.value,nl_model.lat.value
+    smb_obs = extract_SMB(obs_wl_map)
+    smb_lon,smb_lat = smb_obs.lon.value,smb_obs.lat.value
 
-    #
+    ### Find the closest pair of points on each curve and compute the angular distance
+    phi2 = np.tile(nl_lon[:,np.newaxis],(1,np.size(smb_lon,0)))*u.deg
+    th2 = np.tile(nl_lat[:,np.newaxis],(1,np.size(smb_lon,0)))*u.deg
+    phi1 = np.tile(smb_lon[:,np.newaxis].T,(np.size(nl_lon,0),1))*u.deg
+    th1 = np.tile(smb_lat[:,np.newaxis].T,(np.size(nl_lon,0),1))*u.deg
+    [min_separation,idx_min] = compute_min_dist(phi1,th1,phi2,th2) 
+    #return sigma_min
 
+    if norm_mode=='fixed': #i.e. equivalent to a constant streamer belt thickness
+            norm_val = 5*np.ones(np.shape(min_separation)) #in deg
+    elif norm_mode=='SB_thickness': #Compute real streamer belt thickness from WL map
+            print("Computation of the real streamer belt thickness is not implemented yet!! Switching to fixed mode: thick=5deg.")
+            norm_val = 5*np.ones(np.shape(min_separation)) #in deg
+    else : raise ValueError(f"norm_mode {norm_mode} not in {norm_mode_all}")
+    min_separation/=norm_val
+
+    return eval_WL_score(min_separation)
+
+
+def eval_WL_score(min_separation_normed) :
+    """
+    Do score evaluation based on set of minimum distances between curves, 
+    as defined in Poirier et al. (2021)
+    """
+
+    mean_val = np.mean(min_separation_normed).to("deg").value
+    err_val = np.std(min_separation_normed).to("deg").value
 
     #---- Definition of the gain function ----
     #Define constant c1 (horizontal shift)
@@ -145,7 +177,4 @@ def compute_WL_score(model_nl_map,smb_obs) :
     score = gain*(1 - penalty);
     score = 100*score; #output in % (100% is a perfect model, 0% is the worst)
 
-    return(score)
-
-
-    pass
+    return score
