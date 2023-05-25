@@ -6,8 +6,36 @@ most probable polarity for 1 carrington rotation centered on timestamp
 3) <DO NL SCORE> Read in measured and predicted Br, compute NL Score
 '''
 import astropy.units as u
+import datetime
+import copy
+import numpy as np
+import helpers as h
+import sunpy.coordinates
+import sys
 
-def create_br_obs(center_date,spacecraft,save_dir="./") :
+def determine_carrington_interval(center_date,body) :
+    inst_body_position = h.create_carrington_trajectory(
+        [center_date],body
+        )
+    inst_lon = inst_body_position.lon
+    inst_antipode = (inst_body_position.lon.value + 180 % 360) *u.deg
+    two_month_window = h.gen_dt_arr(
+        center_date-datetime.timedelta(days=30),
+        center_date+datetime.timedelta(days=30),
+        cadence_days=6/24
+        )
+    two_month_trajectory = h.create_carrington_trajectory(
+        two_month_window,body
+        )
+    carr_inds = np.where(np.diff(
+        (two_month_trajectory.lon-inst_antipode).value % 360
+        ) > 180)[0] + 1
+
+    carrington_interval = two_month_window[carr_inds]
+
+    return carrington_interval
+
+def create_br_obs(center_date,body,save_dir="./") :
     '''
     Given `center_date`:`datetime.datetime` and `spacecraft`*:`str`,
     1) determine the time interval required to span a Carrington 
@@ -21,7 +49,9 @@ def create_br_obs(center_date,spacecraft,save_dir="./") :
     * should validate spacecraft spice kernels are accessible via
     astrospice
     '''
-    pass
+    carrington_interval = determine_carrington_interval(
+        center_date,body
+        )
 
 def create_br_model(model_NL_map, center_date, spacecraft,
                     altitude=2.5*u.R_sun,save_dir="./") :
