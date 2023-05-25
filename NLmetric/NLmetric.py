@@ -10,6 +10,10 @@ import datetime
 import copy
 import numpy as np
 import helpers as h
+import os
+### Change pyspedas directory to NLmetric/data
+os.environ['SPEDAS_DATA_DIR']="./NLmetric/data/"
+import pyspedas
 import sunpy.coordinates
 import sys
 
@@ -35,7 +39,50 @@ def determine_carrington_interval(center_date,body) :
 
     return carrington_interval
 
-def create_br_obs(center_date,body,save_dir="./") :
+def download_br_data(interval, body) :
+    dl_funcs_and_kwargs = {
+        "L1":(
+            pyspedas.wind.mfi,
+            {"varnames":"BGSE"}
+            ),
+        "solar orbiter":(
+            pyspedas.solo.mag,
+            {"datatype":"rtn-normal-1-minute"}
+            ),
+        "psp":(
+            pyspedas.psp.fields,
+            {"datatype":"mag_rtn_1min"}
+            ),
+        "stereo-a":(
+            pyspedas.stereo.mag,
+            {"probe":"a"}
+
+        ),
+        "stereo-b":(
+            pyspedas.stereo.mag,
+            {"probe":"b"}
+        )
+    }
+    dl_func,kwargs = dl_funcs_and_kwargs.get(body)
+    return dl_func(trange=interval,**kwargs,notplot=True)
+
+def make_hourly_medians(datetimes,data) :
+    timestamps = np.array([t.timestamp() for t in datetimes])  
+    datetime_hourly = h.gen_dt_arr(
+        datetimes[0],
+        datetimes[-1],
+        cadence_days=1/24
+        )  
+    ts_edges = np.array([t.timestamp() for t in datetime_hourly[1:-1]])
+    
+    argsplit = [np.where(timestamps > te)[0][0] for te in ts_edges]
+    data_split = np.split(data,argsplit)
+    medians = np.array([np.nanmedian(slice_) for slice_ in data_split])
+    return  (datetime_hourly[:-1]+datetime.timedelta(hours=0.5),
+             medians)
+
+
+def create_br_obs(center_date,body,save_dir="./NLmetric/data/") :
     '''
     Given `center_date`:`datetime.datetime` and `spacecraft`*:`str`,
     1) determine the time interval required to span a Carrington 
@@ -52,6 +99,14 @@ def create_br_obs(center_date,body,save_dir="./") :
     carrington_interval = determine_carrington_interval(
         center_date,body
         )
+    data = download_br_data(carrington_interval, body)
+    
+    times_hourly,br_hourly = make_hourly_medians(
+        data[list(data.keys())[0]]['x'],
+        data[list(data.keys())[0]]['y'][:,0],
+    )
+    if body == "L1" : br_hourly *= -1
+    return times_hourly,br_hourly
 
 def create_br_model(model_NL_map, center_date, spacecraft,
                     altitude=2.5*u.R_sun,save_dir="./") :
