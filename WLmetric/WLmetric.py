@@ -19,6 +19,7 @@ def sigmoid(x,a,b):
 
 def create_WL_map(center_date, coronagraph_altitude=3*u.R_sun) :
     '''
+    *** TO BE IMPLEMENTED ***
     Given `center_date`:`datetime.datetime`, download SOHO/LASCO
     coronagraph images for one Carrington rotation centered on that
     date, extract white light intensity above the limbs at the 
@@ -85,9 +86,18 @@ def extract_SMB(wl_map,smoothing_factor=20,save_dir='./WLmetric/data/') :
                     representation_type="spherical"
                     )
 
-def compute_min_dist(phi1,th1,phi2,th2):
+def compute_min_dist(model_map, wl_map) :
+#def compute_min_dist(phi1,th1,phi2,th2):
     #Cpmpute angular distance (i.e. central angle) between all these points
     #see: https://en.wikipedia.org/wiki/Great-circle_distance
+
+    ### Extract two curves to compare
+    nl_model = model_map.contour([0])[0] ### ASSUMES ONLY ONE CONTOUR, CAUTION!
+    smb_obs = extract_SMB(wl_map)
+
+    ### Interpolate to same longitude gridpoints
+
+
     dphi = np.abs(phi2-phi1)
     dth = np.abs(th2-th1)
     sigma = np.arctan2(np.sqrt((np.cos(th2)*np.sin(dphi))**2+(np.cos(th1)*np.sin(th2)-np.sin(th1)*np.cos(th2)*np.cos(dphi))**2),(np.sin(th1)*np.sin(th2)+np.cos(th1)*np.cos(th2)*np.cos(dphi)))
