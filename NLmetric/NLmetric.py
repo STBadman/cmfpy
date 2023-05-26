@@ -14,6 +14,7 @@ import os
 ### Change pyspedas directory to NLmetric/data
 os.environ['SPEDAS_DATA_DIR']="./NLmetric/data/"
 import pyspedas
+from scipy.interpolate import interp1d
 import sunpy.coordinates
 import sys
 
@@ -82,7 +83,7 @@ def make_hourly_medians(datetimes,data) :
              medians)
 
 
-def create_br_obs(center_date,body,save_dir="./NLmetric/data/") :
+def create_polarity_obs(center_date,body,return_br,save_dir="./NLmetric/data/") :
     '''
     Given `center_date`:`datetime.datetime` and `spacecraft`*:`str`,
     1) determine the time interval required to span a Carrington 
@@ -101,15 +102,23 @@ def create_br_obs(center_date,body,save_dir="./NLmetric/data/") :
         )
     data = download_br_data(carrington_interval, body)
     
-    times_hourly,br_hourly = make_hourly_medians(
+    times_medians,br_medians = make_hourly_medians(
         data[list(data.keys())[0]]['x'],
         data[list(data.keys())[0]]['y'][:,0],
     )
-    if body == "L1" : br_hourly *= -1
-    return times_hourly,br_hourly
+    if body == "L1" : br_medians *= -1 # Convert GSE-X to RTN-R
 
-def create_br_model(model_NL_map, center_date, spacecraft,
-                    altitude=2.5*u.R_sun,save_dir="./") :
+    ## Interpolate to 1 hour edges inside carrington interval
+    datetimes_hourly=h.gen_dt_arr(*carrington_interval,cadence_days=1/24)
+    br_hourly = interp1d(h.datetime2unix(times_medians),
+                         br_medians,
+                         bounds_error=False)(h.datetime2unix(datetimes_hourly))
+
+    if return_br :  return datetimes_hourly, br_hourly # Return br in nT
+    else : return  datetimes_hourly,np.sign(br_hourly) # or return sign(br)
+
+def create_polarity_model(model_NL_map, center_date, body,
+                          altitude=2.5*u.R_sun,save_dir="./") :
     '''
     Given `model_NLmap` (modeled neutral line map user provided), 
     `center_date`:`datetime.datetime` (which should match the 
@@ -124,7 +133,23 @@ def create_br_model(model_NL_map, center_date, spacecraft,
     polarity as a function of time
     4) Return predicted timeseries and save in save_dir
     '''
-    pass
+
+    carrington_interval = determine_carrington_interval(center_date,body)
+
+    datetimes_hourly = h.gen_dt_arr(*carrington_interval,
+                                    cadence_days=1/24)
+    
+    carrington_trajectory = h.create_carrington_trajectory(
+        datetimes_hourly,body,obstime_ref=center_date
+        )
+    
+    projected_trajectory = h.ballistically_project(carrington_trajectory,
+                                                   r_inner=altitude)
+    
+    polarity_modeled = sunpy.map.sample_at_coords(model_NL_map, 
+                                                  projected_trajectory)
+    
+    return datetimes_hourly, polarity_modeled
 
 def compute_NL_metric(model_tseries,obs_tseries) :
     '''
@@ -132,116 +157,16 @@ def compute_NL_metric(model_tseries,obs_tseries) :
     aligned, compute the dot product of the data, and divide by the
     number of the datapoints to obtain the NL_metric score.
     '''
-    pass
+    model_tstamps = h.datetime2unix(model_tseries[0])
+    model_pol = np.sign(model_tseries[1])
+    obs_tstamps = h.datetime2unix(obs_tseries[0])
+    obs_pol = np.sign(obs_tseries[1])
 
-'''
-import numpy as np
+    if ((len(model_tstamps) != len(obs_tstamps)) |
+        (model_tstamps[0] != obs_tstamps[0]) |
+        (model_tstamps[-1] != obs_tstamps[-1])
+    ) : 
+        obs_pol = interp1d(obs_tstamps,obs_pol,bounds_error=False)(model_tstamps)
 
-def lookupNearest(x0, y0, x, y, data):
-     xi = np.abs(x-x0).argmin()
-     yi = np.abs(y-y0).argmin()
-     return data[yi,xi]
-'''
-
-
-'''
-dt_E1 = pp.gen_dt_arr(datetime(2018,10,1),datetime(2018,11,30))
-dt_E2 = pp.gen_dt_arr(datetime(2019,3,1),datetime(2019,4,30))
-dt_E3 = pp.gen_dt_arr(datetime(2019,8,1),datetime(2019,9,30))
-dtlims_dict = {1:[datetime(2018,10,1),datetime(2018,11,30)],
-               2:[datetime(2019,3,1),datetime(2019,4,30)],
-               3:[datetime(2019,8,1),datetime(2019,9,30)]}
-
-
-
-#filename = "/home/sam/1_RESEARCH/FIELDS/ISSI_PAPER/in_situ_comparison/in_situ.pkl"
-filename = "/home/sam/1_RESEARCH/FIELDS/ISSI_PAPER/metric_data/Pol/pfss_pol_metric_dat.pkl"
-if not os.path.exists(filename) :    
-    out_dict = {}
-    for peri_num, dt_arr in zip([1,2,3],[dt_E1,dt_E2,dt_E3]) :
-        sys.stdout.write(f"Encounter {peri_num}\n")
-        out_dict_ = {}
-        for rss in [1.5,2.0,2.5,3.0] :
-            sys.stdout.write(f"Rss = {rss}\n")
-            bpsp_pred_agong,bsta_pred_agong,bwind_pred_agong = [],[],[]
-            bpsp_pred_ahmi,bsta_pred_ahmi,bwind_pred_ahmi = [],[],[]
-            bpsp_pred_mrzqs,bsta_pred_mrzqs,bwind_pred_mrzqs = [],[],[]
-
-            psp_ss = pp.get_ss_footpoints(dt_arr)
-            wind_ss = pp.get_ss_footpoints(dt_arr,spice_str="L1")
-            sta_ss = pp.get_ss_footpoints(dt_arr, spice_str="STEREO AHEAD")
-
-            dtlims = dtlims_dict.get(peri_num)
-            (t_common,Br_psp,Vr_psp,psp_coords,
-                  Br_sta,Vr_sta,sta_coords,
-                  Br_wind,Vr_wind,wind_coords) = pp.load_all_interp(peri_num,interp_cadence=1.0,
-                                                                    t_start = dtlims[0],                                                                   t_end = dtlims[1]
-                                                                   )
-            
-            for dt,psp_,wind_,sta_ in zip(dt_arr,psp_ss,wind_ss,sta_ss) :
-                sys.stdout.write(f"{str(dt)[0:15]}...\r")
-                (lonagong,slatagong,agong_NL,
-                lonahmi,slatahmi,ahmi_NL,
-                lonmrzqs,slatmrzqs,mrzqs_NL) = load_NL(datetime(dt.year,
-                                                                dt.month,
-                                                                dt.day), 
-                                                       rss, peri_num)   
-                bpsp_pred_agong.append(lookupNearest(
-                    psp_.lon.value,np.sin(psp_.lat),
-                    lonagong,slatagong,agong_NL.values
-                ))
-                bsta_pred_agong.append(lookupNearest(
-                    sta_.lon.value,np.sin(sta_.lat),
-                    lonagong,slatagong,agong_NL.values
-                ))
-                bwind_pred_agong.append(lookupNearest(
-                    wind_.lon.value,np.sin(wind_.lat),
-                    lonagong,slatagong,agong_NL.values
-                ))
-
-                bpsp_pred_ahmi.append(lookupNearest(
-                    psp_.lon.value,np.sin(psp_.lat),
-                    lonahmi,slatahmi,ahmi_NL.values
-                ))
-                bsta_pred_ahmi.append(lookupNearest(
-                    sta_.lon.value,np.sin(sta_.lat),
-                    lonahmi,slatahmi,ahmi_NL.values
-                ))
-                bwind_pred_ahmi.append(lookupNearest(
-                    wind_.lon.value,np.sin(wind_.lat),
-                    lonahmi,slatahmi,ahmi_NL.values
-                ))
-
-                bpsp_pred_mrzqs.append(lookupNearest(
-                    psp_.lon.value,np.sin(psp_.lat),
-                    lonmrzqs,slatmrzqs,mrzqs_NL
-                ))
-                bsta_pred_mrzqs.append(lookupNearest(
-                    sta_.lon.value,np.sin(sta_.lat),
-                    lonmrzqs,slatmrzqs,mrzqs_NL
-                ))
-                bwind_pred_mrzqs.append(lookupNearest(
-                    wind_.lon.value,np.sin(wind_.lat),
-                    lonmrzqs,slatmrzqs,mrzqs_NL
-                ))
-
-
-
-            sys.stdout.write("\n")
-            out_dict_[rss] = {"PSP":{"PFSS-AGONG" : bpsp_pred_agong,
-                                     "PFSS-AHMI" : bpsp_pred_ahmi,
-                                     "PFSS-GONGz" : bpsp_pred_mrzqs 
-                                    },
-                              "STA":{"PFSS-AGONG" : bsta_pred_agong ,
-                                     "PFSS-AHMI" : bsta_pred_ahmi,
-                                     "PFSS-GONGz" : bsta_pred_mrzqs 
-                                    },
-                              "Wind":{"PFSS-AGONG" : bwind_pred_agong ,
-                                     "PFSS-AHMI" : bwind_pred_ahmi ,
-                                     "PFSS-GONGz" : bwind_pred_mrzqs 
-                                    }
-                             } 
-        out_dict[peri_num] = [out_dict_,{"PSP":Br_psp,"STA":Br_sta,"Wind":Br_wind}]
-    pickle.dump(out_dict,open(filename,"wb"))
-else : out_dict = pickle.load(open(filename,"rb"))
-'''
+    mult = obs_pol*model_pol
+    return np.nansum(mult[mult == 1])/len(~np.isnan(mult))

@@ -41,7 +41,7 @@ def csv2map(csvpath,datetime_csv) :
 
     return sunpy.map.Map(data,header)
 
-def create_carrington_trajectory(datetime_array,body) :
+def create_carrington_trajectory(datetime_array,body,obstime_ref=None) :
     assert body in SUPPORTED_BODIES.keys(), f"body {body} not in {SUPPORTED_BODIES.keys()}"
 
     ### Create SkyCoord for PSP in the inertial (J2000) frame
@@ -58,6 +58,16 @@ def create_carrington_trajectory(datetime_array,body) :
         L1_correction = 1.0- ((const.M_earth.value/
                         (const.M_earth.value
                          +const.M_sun.value))/3)**(1/3)
+    else : L1_correction=1.0
+
+    if obstime_ref is not None :
+        trajectory_carrington = carr2SkyCoord(
+            trajectory_carrington.lon,
+            trajectory_carrington.lat,
+            trajectory_carrington.radius*L1_correction,
+            obstime=obstime_ref
+        )
+    else : 
         trajectory_carrington = carr2SkyCoord(
             trajectory_carrington.lon,
             trajectory_carrington.lat,
@@ -65,11 +75,13 @@ def create_carrington_trajectory(datetime_array,body) :
             obstime=datetime_array
         )
 
+
     return trajectory_carrington
 
 
 def gen_dt_arr(dt_init,dt_final,cadence_days=1) :
     """
+    'Generate Datetime Array'
     Get array of datetime.datetime from {dt_init} to {dt_final} every 
     {cadence_days} days
     """
@@ -81,6 +93,7 @@ def gen_dt_arr(dt_init,dt_final,cadence_days=1) :
 
 def carr2SkyCoord(lon,lat,radius,obstime) :
     """
+    'Cast Carrington Coordinates to astropy.coordinates.SkyCoord'
     Given a set of heliographic coordinates and an observation time,  return
     an `astropy.coordinates.SkyCoord` encoding that information.
     Useful for annotating `sunpy.map.Map` with additional data.
@@ -91,6 +104,10 @@ def carr2SkyCoord(lon,lat,radius,obstime) :
                         ),
                     representation_type="spherical"
                    )
+
+def datetime2unix(dt_arr) :
+    """Convert 1D array of `datetime.datetime` to unix timestamps"""
+    return np.array([dt.timestamp() for dt in dt_arr])
 
 def unix2datetime(ut_arr) : 
     """Convert 1D array of unix timestamps (float) to `datetime.datetime`"""
