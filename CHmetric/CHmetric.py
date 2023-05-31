@@ -20,7 +20,10 @@ from sunpy.net import Fido, attrs as a
 import sunpy.map
 import sys
 import helpers as h
-import CHMAP.software.ezseg.ezsegwrapper as ezsegwrapper
+import warnings 
+
+if os.path.exists("./CHMAP/software/ezseg/ezsegwrapper.so") : import CHMAP.software.ezseg.ezsegwrapper as ezsegwrapper
+else : warnings.warn("EZSEG Wrapper not found, CHmetric.extract_obs_ch will only work with `ezseg_version==python`")
 
 
 def create_euv_map(center_date,
