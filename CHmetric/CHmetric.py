@@ -42,6 +42,7 @@ def create_euv_map(center_date,
     ## First, check if map centered on center_date has already been created 
     ## if it has, jump straight to the end.
     savepath = f"{save_dir}{center_date.strftime('%Y-%m-%d')}.fits"
+
     if not os.path.exists(savepath) or replace :
 
         ## Use sunpy Fido to search for AIA 193 data over a carrinton rotation
@@ -157,6 +158,7 @@ def extract_obs_ch(euv_map_path,
         
         if ezseg_version == "fortran":
 
+            euv_map = sunpy.map.Map(euv_map_path)
             data = euv_map.data
             use_indices = np.logical_and(data > 2., data!=np.nan)
             use_chd = use_indices.astype(int)
