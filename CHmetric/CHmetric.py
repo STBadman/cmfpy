@@ -20,6 +20,8 @@ from sunpy.net import Fido, attrs as a
 import sunpy.map
 import sys
 import helpers as h
+import CHMAP.software.ezseg.ezsegwrapper as ezsegwrapper
+
 
 def create_euv_map(center_date,
                    euv_obs_cadence=1*u.day,
@@ -39,7 +41,7 @@ def create_euv_map(center_date,
 
     ## First, check if map centered on center_date has already been created 
     ## if it has, jump straight to the end.
-    savepath = f"{save_dir}/{center_date.strftime('%Y-%m-%d')}.fits"
+    savepath = f"{save_dir}{center_date.strftime('%Y-%m-%d')}.fits"
     if not os.path.exists(savepath) or replace :
 
         ## Use sunpy Fido to search for AIA 193 data over a carrinton rotation
@@ -115,7 +117,7 @@ def create_euv_map(center_date,
 def extract_obs_ch(euv_map_path,
                    replace=False,
                    save_dir='./CHmetric/data/',
-                   ezseg_version="python", # will add fortran wrapper option
+                   ezseg_version="fortran", # will add fortran wrapper option
                    ezseg_params = {"thresh1":10, ## Seed threshold
                                    "thresh2":75, ## Growing Threshhold
                                    "nc":7, ## at least 7 consecutive pixels to declare coronal hole area is connected
@@ -127,31 +129,58 @@ def extract_obs_ch(euv_map_path,
     extract coronal hole contours. Convert contours to open and 
     closed pixels, create sunpy.map, save as fits file in `save_dir` 
     '''
-    savepath = f"{save_dir}/{os.path.basename(euv_map_path)[:-5]}_ch_extracted.fits" 
+    savepath = f"{save_dir}{os.path.basename(euv_map_path)[:-5]}_ch_extracted.fits" 
 
-    ## Run only if file does not already exist or if
-    ## `replace == True`
+    ## Run only if file does not already exist or if `replace == True`
     if not os.path.exists(savepath) or replace :
-        euv_map = sunpy.map.Map(euv_map_path) 
-        euvmap_array= np.log10(euv_map.data)
-        valid_data = ~np.isnan(euv_map.data)
-
-        ## Python version via D. H. Brooks
-        segmented_array = ezseg.ezseg_algorithm(euvmap_array, ## Data to extract contours from
-                                                valid_data, ## Valid pixels
-                                                euvmap_array.shape[0], ## x-dimension of array
-                                                euvmap_array.shape[1], ## y-dimension of array
-                                                ezseg_params["thresh1"],
-                                                ezseg_params["thresh2"],
-                                                ezseg_params["nc"],
-                                                ezseg_params["iters"]
-                                            )
+         
+    # python version from ezseg.py
+        if ezseg_version == "python":
         
-        ## Cast to sunpy.map and save as fits file
-        ch_map_obs = sunpy.map.Map(np.invert(segmented_array).astype(float),euv_map.meta)
+                euv_map = sunpy.map.Map(euv_map_path) 
+                euvmap_array= np.log10(euv_map.data)
+                valid_data = ~np.isnan(euv_map.data)
+
+                ## Python version via D. H. Brooks
+                segmented_array = ezseg.ezseg_algorithm(euvmap_array, ## Data to extract contours from
+                                                        valid_data, ## Valid pixels
+                                                        euvmap_array.shape[0], ## x-dimension of array
+                                                        euvmap_array.shape[1], ## y-dimension of array
+                                                        ezseg_params["thresh1"],
+                                                        ezseg_params["thresh2"],
+                                                        ezseg_params["nc"],
+                                                        ezseg_params["iters"]
+                                                    )
+                
+                ## Cast to sunpy.map and save as fits file
+                ch_map_obs = sunpy.map.Map(np.invert(segmented_array).astype(float),euv_map.meta)
+        
+        if ezseg_version == "fortran":
+
+            data = euv_map.data
+            use_indices = np.logical_and(data > 2., data!=np.nan)
+            use_chd = use_indices.astype(int)
+            use_chd = np.where(use_chd == 1, use_chd, np.nan)
+            nx = euv_map.meta['naxis2']
+            ny = euv_map.meta['naxis1']
+
+            # fortran chd algorithm
+            np.seterr(divide='ignore')
+            ezseg_output, iters_used = ezsegwrapper.ezseg(np.log10(data), use_chd, nt=nx, np=ny, 
+                                                         thresh1=ezseg_params["thresh1"],
+                                                         thresh2=ezseg_params["thresh2"],
+                                                         nc=ezseg_params["nc"],
+                                                         iters=ezseg_params["iters"])
+            chd_result = np.logical_and(ezseg_output == 0, use_chd == 1)
+            chd_result = chd_result.astype(int)
+
+            # create CHD map
+            ch_map_obs = sunpy.map.Map(chd_result.astype(int), euv_map.meta)                
+        
         ch_map_obs.save(savepath,overwrite=replace)
 
     return savepath
+
 
 def do_ch_score(dt_model, chmap_model, chmap_obs,auto_interp=False) :
     '''
