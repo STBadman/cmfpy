@@ -27,7 +27,8 @@ def create_euv_map(center_date,
                    euv_obs_cadence=1*u.day,
                    gaussian_filter_width = 30*u.deg,
                    save_dir='./CHmetric/data/',
-                   replace=False
+                   replace=False,
+                   wvln = 193*u.angstrom
                    ) :
     '''
     Given `center_date`:`datetime.datetime` download a Carrington 
@@ -41,7 +42,7 @@ def create_euv_map(center_date,
 
     ## First, check if map centered on center_date has already been created 
     ## if it has, jump straight to the end.
-    savepath = f"{save_dir}{center_date.strftime('%Y-%m-%d')}.fits"
+    savepath = f"{save_dir}{center_date.strftime('%Y-%m-%d')}_{int(wvln.value):04d}.fits"
 
     if not os.path.exists(savepath) or replace :
 
@@ -55,7 +56,7 @@ def create_euv_map(center_date,
                 center_date+datetime.timedelta(days=14)
             ), 
             a.Instrument.aia,
-            a.Wavelength(193*u.angstrom), 
+            a.Wavelength(wvln), 
             a.Sample(euv_obs_cadence)
             )  
         ## Download, or return files if already exist
