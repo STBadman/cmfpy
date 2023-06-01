@@ -21,14 +21,17 @@ import sunpy.map
 import sys
 import helpers as h
 import warnings 
+import glob
 
-if os.path.exists("./CHMAP/software/ezseg/ezsegwrapper.so") : import CHMAP.software.ezseg.ezsegwrapper as ezsegwrapper
+if os.path.exists(f"./CHMAP/software/ezseg/ezsegwrapper.cpython-{sys.version_info.major}{sys.version_info.minor}-darwin.so") : import CHMAP.software.ezseg.ezsegwrapper as ezsegwrapper
+elif os.path.exists(glob.glob(f"./CHMAP/software/ezseg/ezsegwrapper.*.so")) : import CHMAP.software.ezseg.ezsegwrapper as ezsegwrapper
 else : warnings.warn("EZSEG Wrapper not found, CHmetric.extract_obs_ch will only work with `ezseg_version==python`")
 
 
 def create_euv_map(center_date,
                    euv_obs_cadence=1*u.day,
                    gaussian_filter_width = 30*u.deg,
+                   days_around = 14, # number of days plus/minus the center date to create the map
                    save_dir='./CHmetric/data/',
                    replace=False,
                    wvln = 193*u.angstrom
@@ -55,8 +58,8 @@ def create_euv_map(center_date,
         ### much quicker on the next run.
         sys.stdout.write(f"Searching for input EUV maps")
         res=Fido.search(
-            a.Time(center_date-datetime.timedelta(days=14), 
-                center_date+datetime.timedelta(days=14)
+            a.Time(center_date-datetime.timedelta(days=days_around), 
+                center_date+datetime.timedelta(days=days_around)
             ), 
             a.Instrument.aia,
             a.Wavelength(wvln), 
@@ -72,7 +75,7 @@ def create_euv_map(center_date,
         
         ## Loop through input maps and reproject each one to the Carrington frame
         shape_out = (360, 720)
-        carrington_maps = []
+        carrington_maps, datetime_list = [], []
         sys.stdout.write(f"Reprojecting {len(carrington_rotation)} Maps: \n")
         for ii,m in enumerate(carrington_rotation) :
             sys.stdout.write(f"{ii+1:02d}/{len(carrington_rotation)}\r")
@@ -80,12 +83,13 @@ def create_euv_map(center_date,
                 m.date, m.observer_coordinate,shape_out, frame='carrington'
                 )
             carrington_maps.append(m.reproject_to(header))
+            datetime_list.append(datetime.datetime.strptime(m.meta['date-obs'], '%Y-%m-%dT%H:%M:%S.%f'))
         
         ## Combine maps together with gaussian weighting
 
-        ### Make header for combined map (use central map as reference)
-        ref_map = carrington_rotation[14]
-        ref_date = ref_map.meta['date-obs']
+        ### Make header for combined map (use central map as reference)  
+        closest_datetime = min(datetime_list, key=lambda x: abs(x - center_date))
+        ref_map = carrington_rotation[datetime_list.index(closest_datetime)]
         ref_coord = ref_map.observer_coordinate
         ref_header = sunpy.map.make_heliographic_header(
             ref_map.date, ref_coord, shape_out, frame="carrington"
@@ -134,34 +138,35 @@ def extract_obs_ch(euv_map_path,
     extract coronal hole contours. Convert contours to open and 
     closed pixels, create sunpy.map, save as fits file in `save_dir` 
     '''
-    savepath = f"{save_dir}{os.path.basename(euv_map_path)[:-5]}_ch_extracted.fits" 
-
-    ## Run only if file does not already exist or if `replace == True`
-    if not os.path.exists(savepath) or replace :
          
     # python version from ezseg.py
-        if ezseg_version == "python":
-        
-                euv_map = sunpy.map.Map(euv_map_path) 
-                euvmap_array= np.log10(euv_map.data)
-                valid_data = ~np.isnan(euv_map.data)
+    if ezseg_version == "python":
+        savepath = f"{save_dir}{os.path.basename(euv_map_path)[:-5]}_ch_extracted_python.fits" 
+        ## Run only if file does not already exist or if `replace == True`
+        if not os.path.exists(savepath) or replace :
+            euv_map = sunpy.map.Map(euv_map_path) 
+            euvmap_array= np.log10(euv_map.data)
+            valid_data = ~np.isnan(euv_map.data)
 
-                ## Python version via D. H. Brooks
-                segmented_array = ezseg.ezseg_algorithm(euvmap_array, ## Data to extract contours from
-                                                        valid_data, ## Valid pixels
-                                                        euvmap_array.shape[0], ## x-dimension of array
-                                                        euvmap_array.shape[1], ## y-dimension of array
-                                                        ezseg_params["thresh1"],
-                                                        ezseg_params["thresh2"],
-                                                        ezseg_params["nc"],
-                                                        ezseg_params["iters"]
-                                                    )
-                
-                ## Cast to sunpy.map and save as fits file
-                ch_map_obs = sunpy.map.Map(np.invert(segmented_array).astype(float),euv_map.meta)
-        
-        if ezseg_version == "fortran":
+            ## Python version via D. H. Brooks
+            segmented_array = ezseg.ezseg_algorithm(euvmap_array, ## Data to extract contours from
+                                                    valid_data, ## Valid pixels
+                                                    euvmap_array.shape[0], ## x-dimension of array
+                                                    euvmap_array.shape[1], ## y-dimension of array
+                                                    ezseg_params["thresh1"],
+                                                    ezseg_params["thresh2"],
+                                                    ezseg_params["nc"],
+                                                    ezseg_params["iters"]
+                                                )
+            
+            ## Cast to sunpy.map and save as fits file
+            ch_map_obs = sunpy.map.Map(np.invert(segmented_array).astype(float),euv_map.meta)
+            ch_map_obs.save(savepath, overwrite=replace)
 
+    if ezseg_version == "fortran":
+        savepath = f"{save_dir}{os.path.basename(euv_map_path)[:-5]}_ch_extracted_fortran.fits" 
+        ## Run only if file does not already exist or if `replace == True`
+        if not os.path.exists(savepath) or replace :
             euv_map = sunpy.map.Map(euv_map_path)
             data = euv_map.data
             use_indices = np.logical_and(data > 2., data!=np.nan)
@@ -182,8 +187,8 @@ def extract_obs_ch(euv_map_path,
 
             # create CHD map
             ch_map_obs = sunpy.map.Map(chd_result.astype(int), euv_map.meta)                
+            ch_map_obs.save(savepath, overwrite=replace)
         
-        ch_map_obs.save(savepath,overwrite=replace)
 
     return savepath
 

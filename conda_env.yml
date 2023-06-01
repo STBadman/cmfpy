@@ -10,7 +10,7 @@ dependencies:
   - pandas
   - pip
   - pymdown-extensions
-  - python
+  - python == 3.11.0
   - scipy
   - sunpy == 4.1.2
   - wget
