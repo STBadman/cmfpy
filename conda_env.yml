@@ -3,23 +3,22 @@ channels:
   - defaults
   - conda-forge
 dependencies:
-  - astropy
+  - astropy == 5.3
   - jupyter
   - matplotlib
-  - numpy
+  - numpy == 1.24.3
   - pathlib
-  - pandas
+  - pandas == 1.5.3
   - pip
   - pymdown-extensions
   - python == 3.11.0
-  - scipy
+  - scipy == 1.10.1
   - sunpy == 4.1.2
   - wget
   - pip:
-    - pfsspy
+    - pfsspy == 1.2.0
     - ipykernel
-    - astrospice==0.2.0
-    - heliopy
+    - astrospice == 0.2.0
+    - heliopy == 1.0.0
     - streamtracer
-    - astrospice
     - pyspedas
