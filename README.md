@@ -38,17 +38,18 @@ In order to do this, you need to add a public/private SSH key to your GitHub acc
 * 5.) In your GitHub account, navigate to "Settings" then "SSH and GPG Keys". Then click "New SSH Key" and paste in your SSH key.
     * adds the SSH key to your GitHub account
 
-Setup the CHMAP submodule:
+Setup the CHMAP submodule: 
 * 1.) <code>git submodule init</code>
     * initiates the submodule instance found in the [.gitmodules](https://github.com/STBadman/CoronalModelEval/blob/main/.gitmodules) file
 * 2.) <code>git submodule update</code>
     * updates and clones the [CHMAP](https://predsci.github.io/CHMAP/) repository
 
-Setup the EZSEG module:
-
-* 1.) <code>conda activate coronalmodeleval</code>
+Setup the EZSEG module: This must be done in the `/CHMAP/software/ezseg` directory.
+* 1.) <code>cd ./CHMAP/software/ezseg</code>
+   * navigate to the EZSEG folder containing the `ezseg.f` file
+* 2.) <code>conda activate coronalmodeleval</code>
     * activate conda environment
-* 2.) <code>python -m numpy.f2py ezseg.f -m ezsegwrapper -h ezsegwrapper.pyf</code>   
+* 3.) <code>python -m numpy.f2py ezseg.f -m ezsegwrapper -h ezsegwrapper.pyf</code>   
     * creates <code>ezseg.pyf</code> file with ezsegwrapper function 
-* 3.) <code>python -m numpy.f2py -c ezsegwrapper.pyf ezseg.f</code>  
+* 4.) <code>python -m numpy.f2py -c ezsegwrapper.pyf ezseg.f</code>  
     * creates shared module <code>ezsegwrapper.so</code>
