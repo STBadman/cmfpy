@@ -23,16 +23,20 @@ import helpers as h
 import warnings 
 import glob
 
-if os.path.exists(f"./CHMAP/software/ezseg/ezsegwrapper.cpython-{sys.version_info.major}{sys.version_info.minor}-darwin.so") : import CHMAP.software.ezseg.ezsegwrapper as ezsegwrapper
-elif os.path.exists(glob.glob(f"./CHMAP/software/ezseg/ezsegwrapper.*.so")) : import CHMAP.software.ezseg.ezsegwrapper as ezsegwrapper
+if os.path.exists(os.path.join(
+    "CHMAP","software","ezseg",
+    f"ezsegwrapper.cpython-{sys.version_info.major}{sys.version_info.minor}-darwin.so"
+    )) : 
+    import CHMAP.software.ezseg.ezsegwrapper as ezsegwrapper
+elif len(glob.glob(f"./CHMAP/software/ezseg/ezsegwrapper.*.so")) > 0 : 
+    import CHMAP.software.ezseg.ezsegwrapper as ezsegwrapper
 else : warnings.warn("EZSEG Wrapper not found, CHmetric.extract_obs_ch will only work with `ezseg_version==python`")
-
 
 def create_euv_map(center_date,
                    euv_obs_cadence=1*u.day,
                    gaussian_filter_width = 30*u.deg,
                    days_around = 14, # number of days plus/minus the center date to create the map
-                   save_dir='./CHmetric/data/',
+                   save_dir=os.path.join('CHmetric','data'),
                    replace=False,
                    wvln = 193*u.angstrom
                    ) :
@@ -48,7 +52,7 @@ def create_euv_map(center_date,
 
     ## First, check if map centered on center_date has already been created 
     ## if it has, jump straight to the end.
-    savepath = f"{save_dir}{center_date.strftime('%Y-%m-%d')}_{int(wvln.value):04d}.fits"
+    savepath = os.path.join(f"{save_dir}",f"{center_date.strftime('%Y-%m-%d')}_{int(wvln.value):04d}.fits")
 
     if not os.path.exists(savepath) or replace :
 
@@ -125,7 +129,7 @@ def create_euv_map(center_date,
 
 def extract_obs_ch(euv_map_path,
                    replace=False,
-                   save_dir='./CHmetric/data/',
+                   save_dir = os.path.join('CHmetric','data'),
                    ezseg_version="fortran", # will add fortran wrapper option
                    ezseg_params = {"thresh1":10, ## Seed threshold
                                    "thresh2":75, ## Growing Threshhold
@@ -141,7 +145,9 @@ def extract_obs_ch(euv_map_path,
          
     # python version from ezseg.py
     if ezseg_version == "python":
-        savepath = f"{save_dir}{os.path.basename(euv_map_path)[:-5]}_ch_extracted_python.fits" 
+        savepath = os.path.join(f"{save_dir}",
+                                f"{os.path.basename(euv_map_path)[:-5]}_ch_extracted_python.fits"
+        ) 
         ## Run only if file does not already exist or if `replace == True`
         if not os.path.exists(savepath) or replace :
             euv_map = sunpy.map.Map(euv_map_path) 
@@ -164,7 +170,10 @@ def extract_obs_ch(euv_map_path,
             ch_map_obs.save(savepath, overwrite=replace)
 
     if ezseg_version == "fortran":
-        savepath = f"{save_dir}{os.path.basename(euv_map_path)[:-5]}_ch_extracted_fortran.fits" 
+        savepath = os.path.join(f"{save_dir}",
+                                "{os.path.basename(euv_map_path)[:-5]}_ch_extracted_fortran.fits"
+                                )
+
         ## Run only if file does not already exist or if `replace == True`
         if not os.path.exists(savepath) or replace :
             euv_map = sunpy.map.Map(euv_map_path)
