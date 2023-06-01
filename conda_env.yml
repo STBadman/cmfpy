@@ -4,6 +4,7 @@ channels:
   - conda-forge
 dependencies:
   - astropy
+  - jupyter notebook
   - matplotlib
   - numpy
   - pathlib
