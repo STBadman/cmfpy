@@ -8,6 +8,7 @@ This module shall provide capability to :
 import astropy.units as u
 from astropy.coordinates import SkyCoord
 import numpy as np
+import os
 import WLmetric.io_functions # functions to read in maps from different sources
 from scipy.ndimage import gaussian_filter1d
 import sunpy.map
@@ -53,7 +54,9 @@ def extract_edge_coords(wl_map) :
     return WL_pphi_edges, WL_tth_edges, WL_I_edges
 
 
-def extract_SMB(wl_map,smoothing_factor=20,save_dir='./WLmetric/data/') :
+def extract_SMB(wl_map,smoothing_factor=20,
+                save_dir=os.path.join("WLmetric","data")
+                ):
     '''
     Given a precomputed input White light carrington map (`wl_map`),
     extract the streamer maximum brightness (SMB) line, and the 
@@ -71,7 +74,9 @@ def extract_SMB(wl_map,smoothing_factor=20,save_dir='./WLmetric/data/') :
 
     #Before smoothing the curve, repeat data at each side
     n_extend = int(smoothing_factor/2)+1;
-    SMB_th_extended = np.concatenate((SMB_th_edges[-1-(n_extend-1):-1],SMB_th_edges,SMB_th_edges[1:n_extend-1]),axis=0);
+    SMB_th_extended = np.concatenate((SMB_th_edges[-1-(n_extend-1):-1],
+                                      SMB_th_edges,
+                                      SMB_th_edges[1:n_extend-1]),axis=0);
 
     #Smooth the SMB line
     SMB_th_extended = gaussian_filter1d(SMB_th_extended,smoothing_factor)

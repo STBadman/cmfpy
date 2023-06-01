@@ -12,7 +12,7 @@ import numpy as np
 import helpers as h
 import os
 ### Change pyspedas directory to NLmetric/data
-os.environ['SPEDAS_DATA_DIR']="./NLmetric/data/"
+os.environ['SPEDAS_DATA_DIR']=os.path.join("NLmetric","data")
 import pyspedas
 from scipy.interpolate import interp1d
 import sunpy.coordinates
@@ -83,7 +83,9 @@ def make_hourly_medians(datetimes,data) :
              medians)
 
 
-def create_polarity_obs(center_date,body,return_br,save_dir="./NLmetric/data/") :
+def create_polarity_obs(center_date,body,return_br,
+                        save_dir=os.path.join("NLmetric","data")
+                        ):
     '''
     Given `center_date`:`datetime.datetime` and `spacecraft`*:`str`,
     1) determine the time interval required to span a Carrington 
@@ -118,7 +120,8 @@ def create_polarity_obs(center_date,body,return_br,save_dir="./NLmetric/data/") 
     else : return  datetimes_hourly,np.sign(br_hourly) # or return sign(br)
 
 def create_polarity_model(model_NL_map, center_date, body,
-                          altitude=2.5*u.R_sun,save_dir="./") :
+                          altitude=2.5*u.R_sun,save_dir=os.path.join(".")
+                          ):
     '''
     Given `model_NLmap` (modeled neutral line map user provided), 
     `center_date`:`datetime.datetime` (which should match the 

@@ -149,7 +149,9 @@ import glob
 def get_WL_map(WL_date,WL_path,WL_source,replace=False):
     sources = ['connect_tool',"V1.1"]
     if WL_source=='connect_tool':
-            already_downloaded = glob.glob(f"{WL_path}/C2/connect_tool/*.png")
+            already_downloaded = glob.glob(
+                os.path.join(f"{WL_path}","C2","connect_tool","*.png")
+                )
             WL_fullpath = None
             for filepath in already_downloaded :
                 if WL_date.strftime("%Y%m%d") in os.path.basename(filepath)  :
