@@ -43,8 +43,10 @@ def determine_carrington_interval(center_date,body) :
 def download_br_data(interval, body) :
     dl_funcs_and_kwargs = {
         "L1":(
-            pyspedas.wind.mfi,
-            {"varnames":"BGSE"}
+            # pyspedas.wind.mfi,
+            # {"varnames":"BGSE"}
+            pyspedas.omni.data,
+            {"varnames":"BX_GSE"}
             ),
         "solar orbiter":(
             pyspedas.solo.mag,
@@ -57,11 +59,14 @@ def download_br_data(interval, body) :
         "stereo-a":(
             pyspedas.stereo.mag,
             {"probe":"a"}
-
+            #pyspedas.stereo.mag, #replace when pyspedas pr comes through
+            #{"probe":"a"}
         ),
         "stereo-b":(
             pyspedas.stereo.mag,
             {"probe":"b"}
+            #pyspedas.stereo.mag, #replace when pyspedas pr comes through
+            #{"probe":"b"}
         )
     }
     dl_func,kwargs = dl_funcs_and_kwargs.get(body)
@@ -104,11 +109,19 @@ def create_polarity_obs(center_date,body,return_br,
         )
     data = download_br_data(carrington_interval, body)
     
-    times_medians,br_medians = make_hourly_medians(
-        data[list(data.keys())[0]]['x'],
-        data[list(data.keys())[0]]['y'][:,0],
-    )
-    if body == "L1" : br_medians *= -1 # Convert GSE-X to RTN-R
+    if body == "L1" : 
+        times_medians,br_medians = make_hourly_medians(
+            data[list(data.keys())[0]]['x'],
+            data[list(data.keys())[0]]['y'],
+        )    
+        br_medians *= -1 # Convert GSE-X to RTN-R
+    
+    else :
+        times_medians,br_medians = make_hourly_medians(
+            data[list(data.keys())[0]]['x'],
+            data[list(data.keys())[0]]['y'][:,0],
+        )
+    
 
     ## Interpolate to 1 hour edges inside carrington interval
     datetimes_hourly=h.gen_dt_arr(*carrington_interval,cadence_days=1/24)
