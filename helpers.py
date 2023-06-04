@@ -10,6 +10,7 @@ import numpy as np
 import pandas as pd
 from pfsspy import utils as pfss_utils
 import sunpy.map
+import sys
 
 # Load in PSP/SolO Spice Kernels (download happens automatically)
 kernels = []
