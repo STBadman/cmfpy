@@ -4,11 +4,27 @@ This repository contains python code to evaluate the three coronal model evaluat
 
 * Source code to perform the evaluations for the three metrics are located in subfolders `./CHmetric/`, `./WLmetric/` and `./NLmetric/`, each of which also contains a data folder where outputs are saved. `./helpers.py` contains some general purpose functions used through the project.
 * Some example model inputs prepared in the format required by the routines are located in `./example_model_data/`. 
-* `./CHMAP` is a submodule pulling from the Predictive Science Inc. [github repo](https://github.com/predsci/CHMAP/tree/9489ada41fb44c28b2614eab2c6fbd7a834ff870) which provides the ability to perform coronal hole image segmentation via a Fortran bridge. See section _CHMAP/EZSEG Setup_ below for how to import submodule correctly.
+* `./CHMAP` is a submodule pulling from the Predictive Science Inc. [github repo](https://github.com/predsci/CHMAP/tree/9489ada41fb44c28b2614eab2c6fbd7a834ff870) which provides the ability to perform coronal hole image segmentation via a Fortran bridge. See section [_CHMAP/EZSEG Setup_](https://github.com/STBadman/CoronalModelEval#chmapezseg-setup) below for how to import submodule correctly.
 * `./topLevel.ipynb` provides a full run through of the metric implementation applied to one of the example model inputs, explaining the procedure, functions and showing output plots to illustrate the model-data comparisons and where the scores come from.
-* `./conda_env.yml` is a conda environment specification file which should install the required dependencies for this notebook and repository to be run out of the box. (6/4/2023 : There is currently a possible issue with downloading EUV data via Sunpy in Windows 10 - see https://github.com/sunpy/sunpy/issues/7045 ). See section _Environment Setup_ for details on how to install the environment. 
+* `./conda_env.yml` is a conda environment specification file which should install the required dependencies for this notebook and repository to be run out of the box. (6/4/2023 : There is currently a possible issue with downloading EUV data via Sunpy in Windows 10 - see https://github.com/sunpy/sunpy/issues/7045 ). See section [_Environment Setup_](https://github.com/STBadman/CoronalModelEval#environment-setup) for details on how to install the environment. 
 
 ## Cloning Repository
+
+To get started, clone this repository to your computer. You will need to have [git]() installed on your computer. Next, navigate (in git-bash (Windows) or Terminal (Mac/Unix/Linux)) to the location on your computer you want to save the repository.
+
+You can either clone via SSH after following the steps in section [Setting Up an SSH Key](https://github.com/STBadman/CoronalModelEval#setting-up-an-ssh-key)  (tested in terminal Unix/Linux)
+   
+```
+git clone git@github.com:STBadman/CoronalModelEval.git
+```
+   
+In Windows, if the ssh step doesn't work, use the https cloning method instead in git-bash :
+
+```
+git clone https://github.com/STBadman/CoronalModelEval.git   
+```   
+
+## Setting Up an SSH Key 
 
 To clone a repository (including submodules) via SSH, you need to add a public/private SSH key to your GitHub account:
 * 1.) <code>cd ~/.ssh</code>
@@ -21,18 +37,6 @@ To clone a repository (including submodules) via SSH, you need to add a public/p
     * view your public key file and copy the text which starts with "ssh-rsa"
 * 5.) In your GitHub account, navigate to "Settings" then "SSH and GPG Keys". Then click "New SSH Key" and paste in your SSH key.
     * adds the SSH key to your GitHub account
-   
-The following should then work (tested in terminal Unix/Linux)
-   
-```
-git clone git@github.com:STBadman/CoronalModelEval.git
-```
-   
-In Windows, if the ssh step doesn't work, use the https cloning method instead in git-bash :
-
-```
-git clone https://github.com/STBadman/CoronalModelEval.git   
-```   
 
 ## Environment Setup
 
