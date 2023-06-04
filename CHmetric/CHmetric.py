@@ -32,6 +32,36 @@ elif len(glob.glob(f"./CHMAP/software/ezseg/ezsegwrapper.*.so")) > 0 :
     import CHMAP.software.ezseg.ezsegwrapper as ezsegwrapper
 else : warnings.warn("EZSEG Wrapper not found, CHmetric.extract_obs_ch will only work with `ezseg_version==python`")
 
+def most_prob_val_log2d(data) :
+    # Assumes data vals are within range 0.1-1000
+    # Most probable value in 2d data array. Takes log
+    # first
+    counts,edges = np.histogram(np.log10(data),
+                      bins=np.linspace(0,3,100)
+                      )
+    bin_centers = (edges[1:]+edges[:-1])/2
+    peak = bin_centers[counts==np.nanmax(counts)][0]
+    return peak   
+
+import h5py
+def compute_normalization_factor() :
+   ### There's hardcoded number in the next function used to
+   ### to rescale the pixel values in the Carrington map to match
+   ### that used in Badman+2022. This function uses the example
+   ### EUV carrington map located in `example_data` to produce 
+   ### this normalization factor.
+    euv_CH_path = f"./example_data/carr_maps.2210.final.h5"
+    f = h5py.File(euv_CH_path, 'r')
+
+    # Parse file into dictionary for simpler format
+    names = [k for k in f.keys()]
+    maps = [m[0] for m in f.values()]
+    map_dict = dict(zip(names[0:5],[m for m in maps[0:5]]))
+    f.close()
+
+    map193 = map_dict["map_0193"][0]
+    return most_prob_val_log2d(map193)
+
 def create_euv_map(center_date,
                    euv_obs_cadence=1*u.day,
                    gaussian_filter_width = 30*u.deg,
@@ -108,13 +138,20 @@ def create_euv_map(center_date,
         for m in carrington_maps
         ]
 
-        ### Average all maps together
-        combined_map_gaussian_weights = sunpy.map.Map(
-            np.nanmean([
+        ### Average all maps together, rescale data to match 
+        # maps from Badman+2022
+        combined_map_data = np.nanmean([
                 m.data*w for m,w in 
                 zip(carrington_maps,gaussian_weights)
                 ],
-                axis=0),ref_header)
+                axis=0)
+        peak_val_raw = most_prob_val_log2d(combined_map_data)
+        #1.742 is the output of CHmetric.CHmetric.compute_normalization_factor()
+        ratio = 10**1.742 / 10**peak_val_raw
+        combined_map_data /= ratio
+        
+        combined_map_gaussian_weights = sunpy.map.Map(
+            combined_map_data,ref_header)
 
         ### Align LH edge with Carrington 0 for consistency
         combined_map_gaussian_weights_roll = pfss_utils.roll_map(
