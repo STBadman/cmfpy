@@ -14,7 +14,7 @@ dependencies:
   - python == 3.11.0
   - scipy == 1.10.1
   - sunpy == 4.1.2
-  - wget
+  - python-wget
   - pip:
     - pfsspy == 1.2.0
     - ipykernel
