@@ -19,11 +19,23 @@ SC_ALL = {"psp":"SOLAR PROBE PLUS",
           "stereo-a":"STEREO AHEAD", 
           "stereo-b":"STEREO BEHIND"}
 SUPPORTED_BODIES = {**SC_ALL,"earth":"EARTH","L1":"EARTH"}
+coverage_dict = {}
 for sc in SC_ALL.keys()  :
-    try : kernels.append(astrospice.registry.get_kernels(sc,'predict'))
+    try : 
+        k_add = astrospice.registry.get_kernels(sc,'predict')
+        kernels.append(k_add)
     except : 
-        try : kernels.append(astrospice.registry.get_kernels(sc,'recon'))
+        try : 
+            k_add = astrospice.registry.get_kernels(sc,'recon')
+            kernels.append(k_add)
         except : sys.stdout.write(f"No kernels located for {sc}")
+    coverage_dict[sc] = [k.coverage(k.bodies[0].name) for k in k_add]
+COVERAGE_LIMITS = {}
+for sc, coverages in coverage_dict.items() :
+    tmin = np.nanmin([c[0] for c in coverages])
+    tmax = np.nanmax([c[1] for c in coverages])
+    COVERAGE_LIMITS[sc] = [tmin,tmax]
+
 
 def csv2map(csvpath,datetime_csv) :
     """
@@ -43,7 +55,17 @@ def csv2map(csvpath,datetime_csv) :
     return sunpy.map.Map(data,header)
 
 def create_carrington_trajectory(datetime_array,body,obstime_ref=None) :
+
+    if type(datetime_array) == datetime.datetime : datetime_array = [datetime_array]
+
+    ### Error handle if requested body is known by astrospice
     assert body in SUPPORTED_BODIES.keys(), f"body {body} not in {SUPPORTED_BODIES.keys()}"
+
+    ### Error handle if requested daterange is out of range of spice coverage
+    if body in ["L1","earth"] : pass
+    else : 
+        assert (datetime_array[0] > COVERAGE_LIMITS[body][0].datetime) & (datetime_array[-1] < COVERAGE_LIMITS[body][-1].datetime), \
+            f"Requested timerange outside of SPICE coverage for body '{body}' : {[c.datetime for c in COVERAGE_LIMITS[body]]}"
 
     ### Create SkyCoord for PSP in the inertial (J2000) frame
     trajectory_inertial = astrospice.generate_coords(
