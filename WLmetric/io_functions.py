@@ -62,7 +62,14 @@ def read_WL_map(WL_fullpath,source):
     else : raise ValueError(f"Source {source} not in {sources}")
     return(WL_I,WL_pphi,WL_tth,WL_I_edges,WL_pphi_edges,WL_tth_edges)
 
-def WLfile2map(WL_fullpath,WL_date,WL_source):
+def WLfile2map(WL_fullpath,WL_date,WL_source,overwrite_date=False):
+
+    if not overwrite_date :
+        if WL_date > datetime(2020,4,27) :
+            WL_source = "connect_tool"
+        else : WL_source = "V1.1"
+    else : WL_source=WL_source
+
     if WL_source == "connect_tool" :
         WL_I = mpimg.imread(WL_fullpath) #cell-centered valued
 
@@ -146,7 +153,18 @@ def read_WL_map_V1p1(WL_fullpath):
     return(WL_I,WL_pphi,WL_tth,WL_I_edges,WL_pphi_edges,WL_tth_edges)
 
 import glob
-def get_WL_map(WL_date,WL_path,WL_source,replace=False):
+def get_WL_map(WL_date,
+               WL_path,
+               WL_source="V1.1",
+               overwrite_date=False,
+               replace=False):
+    
+    if not overwrite_date :
+        if WL_date > datetime(2020,4,27) :
+            WL_source = "connect_tool"
+        else : WL_source = "V1.1"
+    else : WL_source=WL_source
+
     sources = ['connect_tool',"V1.1"]
     if WL_source=='connect_tool':
             already_downloaded = glob.glob(
