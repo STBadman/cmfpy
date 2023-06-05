@@ -44,7 +44,7 @@ def read_NL_SAM(NL_fullpath):
     return(NL_phi_edges,NL_th_edges)
 
 def read_WL_map(WL_fullpath,source):
-    sources = ['connect_tool',"V1.1"]
+    sources = ['connect_tool',"V1.1","V3"]
     if source=='connect_tool':
         [WL_I,
          WL_pphi,
@@ -52,7 +52,7 @@ def read_WL_map(WL_fullpath,source):
          WL_I_edges,
          WL_pphi_edges,
          WL_tth_edges]=read_WL_map_connecttool(WL_fullpath)
-    elif source=='V1.1':
+    elif source in sources:
         [WL_I,
          WL_pphi,
          WL_tth,
@@ -62,12 +62,14 @@ def read_WL_map(WL_fullpath,source):
     else : raise ValueError(f"Source {source} not in {sources}")
     return(WL_I,WL_pphi,WL_tth,WL_I_edges,WL_pphi_edges,WL_tth_edges)
 
-def WLfile2map(WL_fullpath,WL_date,WL_source,overwrite_date=False):
+def WLfile2map(WL_fullpath,WL_date,WL_source,overwrite_date=False,version="V1.1"):
+
+    sources = ['connect_tool',"V1.1","V3"]
 
     if not overwrite_date :
         if WL_date > datetime(2020,4,27) :
             WL_source = "connect_tool"
-        else : WL_source = "V1.1"
+        else : WL_source = version
     else : WL_source=WL_source
 
     if WL_source == "connect_tool" :
@@ -78,7 +80,7 @@ def WLfile2map(WL_fullpath,WL_date,WL_source,overwrite_date=False):
             return np.dot(I[...,:3], [0.2989, 0.5870, 0.1140])
         WL_I = rgb2gray(WL_I)[::-1,:]
 
-    elif WL_source == "V1.1" :
+    elif WL_source in sources :
         WL_I_edges = fits.getdata(WL_fullpath,ext=0)
         
         #If latitude columns are full of nan, replace by zeros
@@ -155,17 +157,16 @@ def read_WL_map_V1p1(WL_fullpath):
 import glob
 def get_WL_map(WL_date,
                WL_path,
-               WL_source="V1.1",
-               overwrite_date=False,
+               WL_source=None,
                replace=False):
     
-    if not overwrite_date :
+    if WL_source is None :
         if WL_date > datetime(2020,4,27) :
             WL_source = "connect_tool"
         else : WL_source = "V1.1"
     else : WL_source=WL_source
 
-    sources = ['connect_tool',"V1.1"]
+    sources = ['connect_tool',"V1.1","V3"]
     if WL_source=='connect_tool':
             already_downloaded = glob.glob(
                 os.path.join(f"{WL_path}","C2","connect_tool","*.png")
@@ -177,8 +178,10 @@ def get_WL_map(WL_date,
                     break
             if WL_fullpath is None : 
                 WL_fullpath = get_WL_map_connecttool(WL_date,WL_path)
-    elif WL_source=='V1.1':
-            [WL_fullpath,WL_date] = get_WL_map_local(WL_date,WL_path)
+    elif WL_source in sources :
+            [WL_fullpath,WL_date] = get_WL_map_local(WL_date,
+                                                     WL_path,
+                                                     version=WL_source)
     else : raise ValueError(f"Source {WL_source} not in {sources}")
     return(WL_fullpath,WL_date)
             
@@ -220,8 +223,8 @@ def get_WL_map_connecttool(WL_date,WL_path):
         raise Exception('Online archive: could not fetch WL map for input date: '+WL_date.strftime('%Y-%m-%dT%H:%M:%S'))
 
 # Fetch WL map from the local database
-def get_WL_map_local(WL_date,WL_path):
-    WL_path_tmp = os.path.join(WL_path,'C2','V1.1(ISSI)')
+def get_WL_map_local(WL_date,WL_path,version="V1.1"):
+    WL_path_tmp = os.path.join(WL_path,'C2',version)
     if not os.path.exists(WL_path_tmp) : os.makedirs(WL_path_tmp)
     files = []
     dates = []
@@ -240,7 +243,11 @@ def get_WL_map_local(WL_date,WL_path):
         idx = np.argmin(dates_diff)
         WL_fullpath = files[idx]
         WL_date_tmp = dates[idx]
-        print('Local archive: the closest (in time) WL map available from input date: ' + WL_date.strftime('%Y-%m-%dT%H:%M:%S') + ' is: '+ str(WL_date_tmp))
+        print('Local archive: the closest (in time)'
+            +'WL map available from input date: ' 
+            + WL_date.strftime('%Y-%m-%dT%H:%M:%S') 
+            +' is: '+ str(WL_date_tmp)
+            )
         return(WL_fullpath,WL_date_tmp)
     else:
         raise Exception('Local archive: sorry, no WL map available for input date: ' + WL_date.strftime('%Y-%m-%dT%H:%M:%S'))
