@@ -79,3 +79,8 @@ Setup the EZSEG module: This must be done in the `/CHMAP/software/ezseg` directo
     * creates <code>ezseg.pyf</code> file with ezsegwrapper function 
 * 4.) <code>python -m numpy.f2py -c ezsegwrapper.pyf ezseg.f</code>  
     * creates shared module <code>ezsegwrapper.so</code>
+
+## Credits
+   
+This repository owes substantial credit to efforts of Tamar Ervin, Nicolas Poirier, David Brooks and Harry Warren!!
+   
