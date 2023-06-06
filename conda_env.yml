@@ -10,6 +10,7 @@ dependencies:
   - pathlib
   - pandas == 1.5.3
   - pip
+  - pyhdf
   - pymdown-extensions
   - python == 3.11.0
   - scipy == 1.10.1
