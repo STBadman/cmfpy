@@ -158,7 +158,8 @@ import glob
 def get_WL_map(WL_date,
                WL_path,
                WL_source=None,
-               replace=False):
+               replace=False,
+               quiet=True):
     
     if WL_source is None :
         if WL_date > datetime(2020,4,27) :
@@ -181,7 +182,8 @@ def get_WL_map(WL_date,
     elif WL_source in sources :
             [WL_fullpath,WL_date] = get_WL_map_local(WL_date,
                                                      WL_path,
-                                                     version=WL_source)
+                                                     version=WL_source,
+                                                     quiet=quiet)
     else : raise ValueError(f"Source {WL_source} not in {sources}")
     return(WL_fullpath,WL_date)
             
@@ -223,7 +225,7 @@ def get_WL_map_connecttool(WL_date,WL_path):
         raise Exception('Online archive: could not fetch WL map for input date: '+WL_date.strftime('%Y-%m-%dT%H:%M:%S'))
 
 # Fetch WL map from the local database
-def get_WL_map_local(WL_date,WL_path,version="V1.1"):
+def get_WL_map_local(WL_date,WL_path,version="V1.1",quiet=True):
     WL_path_tmp = os.path.join(WL_path,'C2',version)
     if not os.path.exists(WL_path_tmp) : os.makedirs(WL_path_tmp)
     files = []
@@ -243,7 +245,7 @@ def get_WL_map_local(WL_date,WL_path,version="V1.1"):
         idx = np.argmin(dates_diff)
         WL_fullpath = files[idx]
         WL_date_tmp = dates[idx]
-        print('Local archive: the closest (in time)'
+        if not quiet: print('Local archive: the closest (in time)'
             +'WL map available from input date: ' 
             + WL_date.strftime('%Y-%m-%dT%H:%M:%S') 
             +' is: '+ str(WL_date_tmp)
