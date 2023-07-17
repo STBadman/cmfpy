@@ -11,6 +11,9 @@ import pandas as pd
 from pfsspy import utils as pfss_utils
 import sunpy.map
 import sys
+from bs4 import BeautifulSoup
+import requests
+from typing import get_type_hints
 
 # Load in PSP/SolO Spice Kernels (download happens automatically)
 kernels = []
@@ -170,3 +173,48 @@ def ballistically_project(skycoord,r_inner = 2.5*u.R_sun, vr_arr=None) :
         representation_type="spherical",
         frame = skycoord.frame
     )
+
+def type_check(args,func):
+    type_hints = get_type_hints(func)
+
+    for arg in type_hints:
+        hint_type = type_hints[arg]
+        arg_val = args[arg]
+        arg_type = type(arg_val)
+
+        if not isinstance(arg_val,hint_type):
+            try: msg = f"'{arg}' is of type {arg_type.__name__}; expected {hint_type.__name__}"
+            except: msg = f"'{arg}' is of type {arg_type.__name__}; expected {hint_type}"
+            raise TypeError(msg)
+
+def listhtml(url:str, contains:str='', include_url:bool=True):
+    type_check(locals(),listhtml)
+
+    page = requests.get(url).text
+    soup = BeautifulSoup(page, 'html.parser')
+
+    out = [node.get('href') for node in soup.find_all('a')]
+    if include_url: out = [f'{url}{f}' for f in out if contains in f]
+    else: out = [f'{f}' for f in out if contains in f]
+    return out
+
+def parse_to_datetime(date:str, delim:str=':'):
+    type_check(locals(),parse_to_datetime)
+
+    year, month, day, time = np.array(date.split(delim),dtype=str)
+    hour, minute = time[0:2], time[2:]
+    date_datetime = datetime.datetime( int(year),int(month),int(day),int(hour),int(minute) )
+
+    return date_datetime
+
+def parse_map(data:np.ndarray|list):
+    type_check(locals(),parse_map)
+
+    sinlat = np.linspace(-1,1,np.shape(data)[0])
+    long = np.linspace(0,360,np.shape(data)[1])
+
+    body = np.column_stack((sinlat, data)).astype(str)
+    ln1 = [str(),]
+    ln1 = np.hstack((ln1,long.astype(str)))
+    
+    return np.vstack((ln1,body))
