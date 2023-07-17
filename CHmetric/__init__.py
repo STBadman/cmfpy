@@ -10,7 +10,7 @@ compute precision, recall and f-score
 from astropy.coordinates import SkyCoord
 import astropy.units as u
 import datetime
-from CHmetric import ezseg
+from CoronalModelEval.CHmetric import ezseg
 import os
 import numpy as np
 import pandas as pd
