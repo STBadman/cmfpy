@@ -1,6 +1,6 @@
 # %%
 import sys
-sys.path.append("CoronalModelEval")
+sys.path.append("coronamagpy")
 import chmetric
 import wlmetric
 import nlmetric
@@ -166,7 +166,7 @@ def pfss(date:str,
         np.savetxt(f'{outdir}/{ofl_name}', ofl_out, fmt = '%s', delimiter=',')
         np.savetxt(f'{outdir}/{nl_name}', nl_out, fmt = '%s', delimiter=',')
 
-    if return_name: return ofl_name, nl_name
+    if return_name: return ofl_name, nl_name, rss
 
 def thresholds(euvmap:sunpy.map.mapbase.GenericMap):
     N=20
@@ -269,9 +269,9 @@ class CoronalModel:
         self.chmap_model = chmap_model
         self.nlmap_model = nlmap_model
 
-    def chmetric(self, replace:bool=False):
+    def chmetric(self, replace:bool=False, days_around:int=14):
         euvmappath = chmetric.create_euv_map(self.datetime, 
-                                                days_around=self.days_around, replace=replace)
+                                                days_around=days_around, replace=replace)
         euvmap = sunpy.map.Map(euvmappath)
         
         thresh1, thresh2 = thresholds(euvmap)
@@ -293,10 +293,10 @@ class CoronalModel:
                                 ch_obs_path,
                                 auto_interp=True)
         return p,r,f
-    def plot_chmetric(self, replace:bool=False):
+    def plot_chmetric(self, replace:bool=False, days_around:int=14):
         datetime_euvmap = self.datetime
         euvmappath = chmetric.create_euv_map(datetime_euvmap, 
-                                                days_around=self.days_around, replace=replace)
+                                                days_around=days_around, replace=replace)
         euvmap = sunpy.map.Map(euvmappath)
         
         thresh1, thresh2 = thresholds(euvmap)
