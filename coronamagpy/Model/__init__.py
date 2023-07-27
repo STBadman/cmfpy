@@ -1,10 +1,12 @@
-import sys
-sys.path.append("..")
-from CHmetric import CHmetric
-from WLmetric import WLmetric, io_functions as io_WL
-from NLmetric import NLmetric 
 # %%
+import sys
+sys.path.append("CoronalModelEval")
+import chmetric
+import wlmetric
+import nlmetric
+from wlmetric import io_functions as io_WL
 import helpers as h
+ 
 import urllib.request
 import os
 
@@ -17,6 +19,19 @@ import sunpy.map
 import astropy.coordinates
 import astropy.units as u
 from scipy.signal import find_peaks
+import datetime
+
+def parse_map(data:np.ndarray|list):
+    h.type_check(locals(),parse_map)
+
+    sinlat = np.linspace(-1,1,np.shape(data)[0])
+    long = np.linspace(0,360,np.shape(data)[1])
+
+    body = np.column_stack((sinlat, data)).astype(str)
+    ln1 = [str(),]
+    ln1 = np.hstack((ln1,long.astype(str)))
+    
+    return np.vstack((ln1,body))
 
 def get_magneto(date:str, delim:str=':', return_name:bool=False):
     h.type_check(locals(),get_magneto)
@@ -110,12 +125,12 @@ def pfss2flines(pfsspy_output, # pfsspy output object
         
     return pfsspy_output.trace(pfsspy.tracing.FortranTracer(max_steps=max_steps),seeds)
         
-def mkpfss(date:str,
+def pfss(date:str,
            delim:str=':',
            rss:int|float=2.5,
            return_name:bool=False
            ):
-    h.type_check(locals(),mkpfss)
+    h.type_check(locals(),pfss)
 
     outdir = 'Model/out'
     datadir = f'Model/data'
@@ -137,20 +152,15 @@ def mkpfss(date:str,
         nlmap = np.where(ss > 0, 1, ss)
         nlmap = np.where(ss < 0, -1, nlmap)
 
-
-        #plt.figure()
-        #plt.imshow(ss,cmap='bwr')
-
         flines_highres = pfss2flines(pfss_model,nth=180,nph=360)
         topologies = flines_highres.polarities.reshape([180,360])
 
 
         oflmap = np.abs(topologies)
 
-        #plt.imshow(topologies,cmap='bwr')
 
-        ofl_out = h.parse_map(oflmap)
-        nl_out = h.parse_map(nlmap)
+        ofl_out = parse_map(oflmap)
+        nl_out = parse_map(nlmap)
 
 
         np.savetxt(f'{outdir}/{ofl_name}', ofl_out, fmt = '%s', delimiter=',')
@@ -206,45 +216,67 @@ def find_close_magneto_date(date:str,
         datestr = files[arg][22:22+2+2+4]
 
         return f'{year}:{datestr[:2]}:{datestr[2:4]}:{datestr[4:]}'
-    
+
+def model(date:str,
+          delim:str=':',
+          days_around:int|float=14,
+          modeltype:str='PFSS',
+          **modelkwargs):
+    h.type_check(locals(),model)
+
+    datetime = h.parse_to_datetime(date,delim=delim)
+
+    if modeltype == 'PFSS':
+        modeldate = find_close_magneto_date(date,delim=delim,days_around=days_around)
+        oflname, nlname = pfss(modeldate,delim=delim,return_name=True,**modelkwargs)
+
+    else: raise NameError(f"Model '{modeltype}' is not implemented")
+
+    datetime_model = h.parse_to_datetime(modeldate)
+
+    chmap_model_path = f'Model/out/{oflname}'
+    nlmap_model_path = f'Model/out/{nlname}'
+
+    chmap_model = h.csv2map(chmap_model_path, datetime_model)
+    nlmap_model = h.csv2map(nlmap_model_path, datetime_model)
+
+    return CoronalModel(modeltype=modeltype,
+                        datetime=datetime,
+                        datetime_model=datetime_model,
+                        chmap_model_path=chmap_model_path,
+                        nlmap_model_path=nlmap_model_path,
+                        chmap_model=chmap_model,
+                        nlmap_model=nlmap_model)
+
 class CoronalModel:
     def __init__(self,
-                 date:str, 
-                 delim:str=':',
-                 days_around:int|float=14, 
-                 modeltype:str='PFSS',
-                 **modelkwargs
-                 ):
+                 modeltype:str,
+                 datetime:datetime.datetime,
+                 datetime_model:datetime.datetime,
+                 chmap_model_path:str,
+                 nlmap_model_path:str,
+                 chmap_model,
+                 nlmap_model):
         h.type_check(locals(),CoronalModel.__init__)
         
-        self.date = date
-        self.delim = delim
-        self.datetime = h.parse_to_datetime(self.date,delim=self.delim)
-        self.days_around = days_around
+        self.modeltype = modeltype
+        self.datetime = datetime
+        self.datetime_model = datetime_model
 
-        if modeltype == 'PFSS':
-            self.modeldate = find_close_magneto_date(date,delim=self.delim,days_around=days_around)
-            self.oflname, self.nlname = mkpfss(self.modeldate,delim=self.delim,return_name=True,**modelkwargs)
+        self.chmap_model_path = chmap_model_path
+        self.nlmap_model_path = nlmap_model_path
 
-        else: raise NameError(f"Model '{modeltype}' is not implemented")
-
-        self.chmap_model_path = f'Model/out/{self.oflname}'
-        self.nlmap_model_path = f'Model/out/{self.nlname}'
-
-        self.datetime_model = h.parse_to_datetime(self.modeldate)
-        self.chmap_model = h.csv2map(self.chmap_model_path, self.datetime_model)
-        self.nlmap_model = h.csv2map(self.nlmap_model_path, self.datetime_model)
+        self.chmap_model = chmap_model
+        self.nlmap_model = nlmap_model
 
     def chmetric(self, replace:bool=False):
-
-        datetime_euvmap = self.datetime
-        euvmappath = CHmetric.create_euv_map(datetime_euvmap, 
+        euvmappath = chmetric.create_euv_map(self.datetime, 
                                                 days_around=self.days_around, replace=replace)
         euvmap = sunpy.map.Map(euvmappath)
         
         thresh1, thresh2 = thresholds(euvmap)
 
-        ch_obs_path = CHmetric.extract_obs_ch(  
+        ch_obs_path = chmetric.extract_obs_ch(  
                                                 euvmappath,
                                                 replace=replace,
                                                 ezseg_version='fortran',
@@ -256,20 +288,20 @@ class CoronalModel:
                                                 }
                                             )
 
-        p,r,f = CHmetric.do_ch_score(self.datetime_model,
+        p,r,f = chmetric.do_ch_score(self.datetime_model,
                                 self.chmap_model_path,
                                 ch_obs_path,
                                 auto_interp=True)
         return p,r,f
     def plot_chmetric(self, replace:bool=False):
         datetime_euvmap = self.datetime
-        euvmappath = CHmetric.create_euv_map(datetime_euvmap, 
+        euvmappath = chmetric.create_euv_map(datetime_euvmap, 
                                                 days_around=self.days_around, replace=replace)
         euvmap = sunpy.map.Map(euvmappath)
         
         thresh1, thresh2 = thresholds(euvmap)
 
-        ch_for_path = CHmetric.extract_obs_ch(euvmappath,
+        ch_for_path = chmetric.extract_obs_ch(euvmappath,
                                         replace=replace,
                                         ezseg_version='fortran',
                                         ezseg_params={
@@ -314,11 +346,11 @@ class CoronalModel:
         ## how they compare
         fig = plt.figure()
         plt.imshow(ch_combined.data,cmap='inferno')
-        plt.title(f'CHmetric {self.date}')
+        plt.title(f'chmetric {self.date}')
         plt.xlabel('Carrington Longitude')
         plt.ylabel('Latitude')
     
-    def wlmetric(self, quiet:bool=True):
+    def wlmetric(self, quiet:bool=True, method:str='Simple'):
         from importlib import reload;reload(io_WL)
         #### Capability to create locally pending
 
@@ -328,10 +360,10 @@ class CoronalModel:
         # Load location is determined by input date.
 
         WL_date = self.datetime
+        WL_path = "./wlmetric/data"
+        if self.datetime < datetime.datetime(2020,4,27): WL_source = 'V3'
+        else: WL_source = 'connect_tool'
 
-        WL_path = "./WLmetric/data"
-        WL_source = 'V3'
-        
         [WL_fullpath,WL_date] = io_WL.get_WL_map(WL_date,
                                                 WL_path,
                                                 WL_source,
@@ -340,9 +372,10 @@ class CoronalModel:
         wlmap = io_WL.WLfile2map(WL_fullpath,WL_date,WL_source)
 
 
-        score = WLmetric.compute_WL_score(self.nlmap_model,wlmap)
+        score = wlmetric.compute_WL_score(self.nlmap_model,wlmap,method=method)
         return score/100
-    def plot_wlmetric(self, quiet:bool=True):
+    
+    def plot_wlmetric(self, quiet:bool=True,method='Simple'):
         from importlib import reload;reload(io_WL)
         #### Capability to create locally pending
 
@@ -353,8 +386,9 @@ class CoronalModel:
 
         WL_date = self.datetime
 
-        WL_path = "./WLmetric/data"
-        WL_source = 'V3'
+        WL_path = "./wlmetric/data"
+        if self.datetime < datetime.datetime(2020,4,27): WL_source = 'V3'
+        else: WL_source = 'connect_tool'
         
         [WL_fullpath,WL_date] = io_WL.get_WL_map(WL_date,
                                                 WL_path,
@@ -366,10 +400,10 @@ class CoronalModel:
         ### INPUT : sunpy.map.Map from a White Light Carrington Map
         ### OUTPUT : astropy.coordinates.SkyCoord describing the 
         # location of maximum brightness in the image at each longitude
-        smb=WLmetric.extract_SMB(wlmap)
+        smb, _ = wlmetric.extract_SMB(wlmap,method=method)
 
 
-        ### As with the CHmetric, the observed map is in constant latitude 
+        ### As with the chmetric, the observed map is in constant latitude 
         # binning. For a fair comparison, we reproject to sine(latitude)
         # (CEA) binning.
         wl_obs_cea = wlmap.reproject_to(self.nlmap_model.wcs)
@@ -393,20 +427,20 @@ class CoronalModel:
         axcomp.set_title("Comparison")
 
     def nlmetric(self):
-        observed_field_l1 = NLmetric.create_polarity_obs(self.datetime,"L1",return_br=True)
-        polarity_pred_l1 = NLmetric.create_polarity_model(self.nlmap_model,self.datetime_model,"L1")
+        observed_field_l1 = nlmetric.create_polarity_obs(self.datetime,"L1",return_br=True)
+        polarity_pred_l1 = nlmetric.create_polarity_model(self.nlmap_model,self.datetime_model,"L1")
 
         ######################
         
         ### Finally we can go ahead and combine the predicted and measured timeseries
-        # to produce our NLmetric score for each spacecraft we compare. 
+        # to produce our nlmetric score for each spacecraft we compare. 
 
-        l1_nl_score = NLmetric.compute_NL_metric(polarity_pred_l1,observed_field_l1)
+        l1_nl_score = nlmetric.compute_NL_metric(polarity_pred_l1,observed_field_l1)
 
         return l1_nl_score
     def plot_nlmetric(self):
-        observed_field_l1 = NLmetric.create_polarity_obs(self.datetime,"L1",return_br=True)
-        polarity_pred_l1 = NLmetric.create_polarity_model(self.nlmap_model,self.datetime_model,"L1")
+        observed_field_l1 = nlmetric.create_polarity_obs(self.datetime,"L1",return_br=True)
+        polarity_pred_l1 = nlmetric.create_polarity_model(self.nlmap_model,self.datetime_model,"L1")
         
         ######################
 

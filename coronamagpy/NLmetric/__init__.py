@@ -11,8 +11,8 @@ import copy
 import numpy as np
 import helpers as h
 import os
-### Change pyspedas directory to NLmetric/data
-os.environ['SPEDAS_DATA_DIR']=os.path.join("NLmetric","data")
+### Change pyspedas directory to nlmetric/data
+os.environ['SPEDAS_DATA_DIR']=os.path.join("nlmetric","data")
 import pyspedas
 from scipy.interpolate import interp1d
 import sunpy.coordinates
@@ -89,7 +89,7 @@ def make_hourly_medians(datetimes,data) :
 
 
 def create_polarity_obs(center_date,body,return_br,
-                        save_dir=os.path.join("NLmetric","data")
+                        save_dir=os.path.join("nlmetric","data")
                         ):
     '''
     Given `center_date`:`datetime.datetime` and `spacecraft`*:`str`,

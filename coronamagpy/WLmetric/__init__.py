@@ -9,10 +9,18 @@ import astropy.units as u
 from astropy.coordinates import SkyCoord
 import numpy as np
 import os
-import WLmetric.io_functions # functions to read in maps from different sources
+import wlmetric.io_functions # functions to read in maps from different sources
 from scipy.ndimage import gaussian_filter1d
 import sunpy.map
 from scipy.interpolate import interp1d
+import cv2
+from astropy.convolution import Gaussian2DKernel
+from astropy.convolution import interpolate_replace_nans, convolve
+from scipy.signal import find_peaks
+
+import sys
+sys.path.append("..")
+import helpers as h
 
 #Score functions definitions
 def sigmoid(x,a,b):
@@ -53,9 +61,72 @@ def extract_edge_coords(wl_map) :
 
     return WL_pphi_edges, WL_tth_edges, WL_I_edges
 
+# functions for processing wl data
+def rm_artifacts(data:np.ndarray|list, width:tuple|list|np.ndarray):
+    h.type_check(locals(),rm_artifacts)
+
+    artifacts = np.zeros(np.shape(data))
+    data_nans = np.isnan(data)
+    data = interpolate_replace_nans(data, Gaussian2DKernel(5), convolve=convolve, boundary='extend')
+
+    #Find peaks with a particular horizontal width
+    for i, row in enumerate(data):
+        width = width
+        col_args, _ = find_peaks(row,width=width)
+
+        for j, _ in enumerate(col_args):
+            arg = (i,np.array(col_args[j]))
+            artifacts[arg] = 1
+
+    #Take location of peaks, and take a radius around each one
+    artifacts = convolve(artifacts, Gaussian2DKernel(1), boundary='extend')
+    artifacts = np.where(artifacts>0.1,True,False)
+    artifacts = np.where(data>np.nanmean(data)+6*np.nanstd(data),True,artifacts)
+
+    #Replace data with nans where there are artifacts
+    filtered = np.where(artifacts, np.nan, data)
+
+    #Fill in the nans
+    filtered = interpolate_replace_nans(filtered, Gaussian2DKernel(2), convolve=convolve, boundary='extend')
+
+    #Reenter nans from original data
+    #filtered = np.where(data_nans, np.nan, filtered)
+
+    return filtered
+def where_streamers(data:np.ndarray|list):
+    h.type_check(locals(),where_streamers)
+    args_row = []
+    args_col = []
+    thickness = []
+
+    for i, col in enumerate(data.T):
+        for j, _ in enumerate(col):
+            #start counting vertically if pixel is the start of a streamer
+            if col[j] == 1 and (col[j-1] == 0 or j==0):
+                k=0
+                while j+k < 178 and col[j+k] == 1: k+=1
+                args_row.append(int(j+k/2))
+                args_col.append(i)
+                thickness.append(5)
+    args_row, args_col, thickness = np.array(args_row), np.array(args_col), np.array(thickness)
+
+    return (args_row, args_col), thickness
+def clean(wldata:np.ndarray|list, width=(1,10)):
+    h.type_check(locals(),clean)
+
+    # remove map artifacts
+    wldata = rm_artifacts(wldata, width)
+    wldata = interpolate_replace_nans(wldata, Gaussian2DKernel(5), convolve=convolve, boundary='extend')
+
+    # apply a weighted blur
+    blur = convolve(wldata, Gaussian2DKernel(20), boundary='extend')
+    blur_weight = wldata - np.min(wldata); blur_weight = 1-blur_weight/np.max(wldata)
+    cleaned = (1-blur_weight)*wldata + blur_weight*blur
+
+    return cleaned
 
 def extract_SMB(wl_map,smoothing_factor=20,
-                save_dir=os.path.join("WLmetric","data")
+                save_dir=os.path.join("wlmetric","data"),method='Simple'
                 ):
     '''
     Given a precomputed input White light carrington map (`wl_map`),
@@ -65,24 +136,46 @@ def extract_SMB(wl_map,smoothing_factor=20,
     '''
     WL_pphi_edges,WL_tth_edges,WL_I_edges = extract_edge_coords(wl_map)
     
-    #Find maximal brightness for each longitude
-    idx_max = np.nanargmax(WL_I_edges,axis=0)
+    if method=='Simple':
+        #Find maximal brightness for each longitude
+        idx_max = np.nanargmax(WL_I_edges,axis=0)
 
-    #Fetch coordinates of these maxima
-    SMB_phi_edges = WL_pphi_edges[0,:].flatten()
-    SMB_th_edges = WL_tth_edges[idx_max,0].flatten()
+        #Fetch coordinates of these maxima
+        SMB_phi_edges = WL_pphi_edges[0,:].flatten()
+        SMB_th_edges = WL_tth_edges[idx_max,0].flatten()
 
-    #Before smoothing the curve, repeat data at each side
-    n_extend = int(smoothing_factor/2)+1;
-    SMB_th_extended = np.concatenate((SMB_th_edges[-1-(n_extend-1):-1],
-                                      SMB_th_edges,
-                                      SMB_th_edges[1:n_extend-1]),axis=0);
+        #Before smoothing the curve, repeat data at each side
+        n_extend = int(smoothing_factor/2)+1;
+        SMB_th_extended = np.concatenate((SMB_th_edges[-1-(n_extend-1):-1],
+                                        SMB_th_edges,
+                                        SMB_th_edges[1:n_extend-1]),axis=0);
 
-    #Smooth the SMB line
-    SMB_th_extended = gaussian_filter1d(SMB_th_extended,smoothing_factor)
+        #Smooth the SMB line
+        SMB_th_extended = gaussian_filter1d(SMB_th_extended,smoothing_factor)
 
-    #Shrink back to initial range
-    SMB_th_edges = SMB_th_extended[(n_extend-1):-(n_extend-1)+1];
+        #Shrink back to initial range
+        SMB_th_edges = SMB_th_extended[(n_extend-1):-(n_extend-1)+1];
+    
+        thickness = 5
+    
+    if method=='Advanced':
+        #Clean the wl map
+        wldata = clean(wl_map.data)
+
+        #Locate streamer belts
+        thresh = np.nanmin(wldata) + 0.9*np.nanstd(wldata)
+        streamers = np.where(wldata>thresh,1,0).astype('uint8')
+
+        #Find center of the streamer belts
+        streamers = cv2.morphologyEx(streamers, cv2.MORPH_OPEN, np.ones((5,5), np.uint8))
+        args, thickness = where_streamers(streamers)
+
+        WL_pphi_edges,WL_tth_edges,WL_I_edges = extract_edge_coords(wl_map)
+        
+        #Get spherical coordinates
+        SMB_phi_edges = WL_pphi_edges[args].flatten()
+        SMB_th_edges = WL_tth_edges[args].flatten()
+         
     return SkyCoord(lon=SMB_phi_edges*u.deg,
                     lat=SMB_th_edges*u.deg,
                     radius=[1*u.R_sun]*len(SMB_phi_edges),
@@ -90,7 +183,7 @@ def extract_SMB(wl_map,smoothing_factor=20,
                     observer=wl_map.observer_coordinate,
                     obstime=wl_map.observer_coordinate.obstime,
                     representation_type="spherical"
-                    )
+                    ), thickness
 
 #def compute_min_dist(model_map, wl_map) :
 def compute_min_dist(phi1,th1,phi2,th2):
@@ -114,7 +207,7 @@ def compute_min_dist(phi1,th1,phi2,th2):
 
     return(sigma_min.to("deg"),idx_min)
 
-def compute_WL_score(model_nl_map,obs_wl_map,norm_mode="fixed") :
+def compute_WL_score(model_nl_map,obs_wl_map,method='Simple') :
     '''
     Given `model_nl_map` (user provided) and a precomputed `smb_obs`
     dataset describing the coronagraph-observed neutral line, extract
@@ -122,12 +215,15 @@ def compute_WL_score(model_nl_map,obs_wl_map,norm_mode="fixed") :
     the average angular distance between the two 1d curves weighted by
     the local streamer belt thickness. 
     '''
-    norm_mode_all = ["fixed","SB_thickness"]
+    #norm_mode_all = ["fixed","SB_thickness"]
  
     ### Extract two curves to compare
-    nl_model = model_nl_map.contour([0])[0] ### ASSUMES ONLY ONE CONTOUR, CAUTION!
-    nl_lon,nl_lat = nl_model.lon.value,nl_model.lat.value
-    smb_obs = extract_SMB(obs_wl_map)
+    nl_lon, nl_lat = [], []
+    for cnt in model_nl_map.contour([0]):
+        nl_lon = np.hstack( (nl_lon, cnt.lon.value) )
+        nl_lat = np.hstack( (nl_lat, cnt.lat.value) )
+
+    smb_obs, norm_val = extract_SMB(obs_wl_map,method=method)
     smb_lon,smb_lat = smb_obs.lon.value,smb_obs.lat.value
 
     ### Find the closest pair of points on each curve and compute the angular distance
@@ -138,13 +234,20 @@ def compute_WL_score(model_nl_map,obs_wl_map,norm_mode="fixed") :
     [min_separation,idx_min] = compute_min_dist(phi1,th1,phi2,th2) 
     #return sigma_min
 
-    if norm_mode=='fixed': #i.e. equivalent to a constant streamer belt thickness
+    '''if norm_mode=='fixed': #i.e. equivalent to a constant streamer belt thickness
             norm_val = 5*np.ones(np.shape(min_separation)) #in deg
     elif norm_mode=='SB_thickness': #Compute real streamer belt thickness from WL map
             print("Computation of the real streamer belt thickness is not implemented yet!! Switching to fixed mode: thick=5deg.")
             norm_val = 5*np.ones(np.shape(min_separation)) #in deg
-    else : raise ValueError(f"norm_mode {norm_mode} not in {norm_mode_all}")
-    min_separation/=norm_val
+    else : raise ValueError(f"norm_mode {norm_mode} not in {norm_mode_all}")'''
+    print(np.shape(min_separation))
+    print(np.shape(norm_val))
+    print(np.mean(norm_val))
+
+    print(min_separation)
+
+    min_separation = min_separation/norm_val
+
 
     return eval_WL_score(min_separation)
 

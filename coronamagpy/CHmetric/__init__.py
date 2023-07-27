@@ -10,7 +10,7 @@ compute precision, recall and f-score
 from astropy.coordinates import SkyCoord
 import astropy.units as u
 import datetime
-from CoronalModelEval.CHmetric import ezseg
+import coronamagpy.chmetric.ezseg as ezseg
 import os
 import numpy as np
 import pandas as pd
@@ -30,7 +30,7 @@ if os.path.exists(os.path.join(
     import CHMAP.software.ezseg.ezsegwrapper as ezsegwrapper
 elif len(glob.glob(f"./CHMAP/software/ezseg/ezsegwrapper.*.so")) > 0 : 
     import CHMAP.software.ezseg.ezsegwrapper as ezsegwrapper
-else : warnings.warn("EZSEG Wrapper not found, CHmetric.extract_obs_ch will only work with `ezseg_version==python`")
+else : warnings.warn("EZSEG Wrapper not found, chmetric.extract_obs_ch will only work with `ezseg_version==python`")
 
 def most_prob_val_log2d(data) :
     # Assumes data vals are within range 0.1-1000
@@ -66,7 +66,7 @@ def create_euv_map(center_date,
                    euv_obs_cadence=1*u.day,
                    gaussian_filter_width = 30*u.deg,
                    days_around = 14, # number of days plus/minus the center date to create the map
-                   save_dir=os.path.join('CHmetric','data'),
+                   save_dir=os.path.join('chmetric','data'),
                    replace=False,
                    wvln = 193*u.angstrom
                    ) :
@@ -146,7 +146,7 @@ def create_euv_map(center_date,
                 ],
                 axis=0)
         peak_val_raw = most_prob_val_log2d(combined_map_data)
-        #1.742 is the output of CHmetric.CHmetric.compute_normalization_factor()
+        #1.742 is the output of chmetric.chmetric.compute_normalization_factor()
         ratio = 10**1.742 / 10**peak_val_raw
         combined_map_data /= ratio
         
@@ -166,7 +166,7 @@ def create_euv_map(center_date,
 
 def extract_obs_ch(euv_map_path,
                    replace=False,
-                   save_dir = os.path.join('CHmetric','data'),
+                   save_dir = os.path.join('chmetric','data'),
                    ezseg_version="fortran", # will add fortran wrapper option
                    ezseg_params = {"thresh1":10, ## Seed threshold
                                    "thresh2":75, ## Growing Threshhold

@@ -207,14 +207,11 @@ def parse_to_datetime(date:str, delim:str=':'):
 
     return date_datetime
 
-def parse_map(data:np.ndarray|list):
-    type_check(locals(),parse_map)
-
-    sinlat = np.linspace(-1,1,np.shape(data)[0])
-    long = np.linspace(0,360,np.shape(data)[1])
-
-    body = np.column_stack((sinlat, data)).astype(str)
-    ln1 = [str(),]
-    ln1 = np.hstack((ln1,long.astype(str)))
+def parse_from_datetime(date_datetime:datetime.datetime, delim:str=':'):
     
-    return np.vstack((ln1,body))
+    year, month, day = f'{date_datetime.year}', f'{date_datetime.month:02}', f'{date_datetime.day:02}'
+    hour, minute = f'{date_datetime.hour:02}', f'{date_datetime.minute:02}'
+
+    date = f'{year}{delim}{month}{delim}{day}{delim}{hour}{minute}'
+
+    return date
