@@ -1,3 +1,3 @@
 [submodule "CHMAP"]
-	path = CHMAP
+	path = coronamagpy/CHMAP
 	url = git@github.com:predsci/CHMAP.git
