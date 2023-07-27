@@ -7,29 +7,28 @@ most probable polarity for 1 carrington rotation centered on timestamp
 '''
 import astropy.units as u
 import datetime
-import copy
 import numpy as np
-import helpers as h
+import coronamagpy.utils as utils
+import coronamagpy.projection as projection
 import os
 ### Change pyspedas directory to nlmetric/data
-os.environ['SPEDAS_DATA_DIR']=os.path.join("nlmetric","data")
+os.environ['SPEDAS_DATA_DIR']=os.path.join(f"{__path__[0]}","data")
 import pyspedas
 from scipy.interpolate import interp1d
 import sunpy.coordinates
-import sys
 
 def determine_carrington_interval(center_date,body) :
-    inst_body_position = h.create_carrington_trajectory(
+    inst_body_position = projection.create_carrington_trajectory(
         [center_date],body
         )
     inst_lon = inst_body_position.lon
     inst_antipode = (inst_body_position.lon.value + 180 % 360) *u.deg
-    two_month_window = h.gen_dt_arr(
+    two_month_window = utils.gen_dt_arr(
         center_date-datetime.timedelta(days=30),
         center_date+datetime.timedelta(days=30),
         cadence_days=6/24
         )
-    two_month_trajectory = h.create_carrington_trajectory(
+    two_month_trajectory = projection.create_carrington_trajectory(
         two_month_window,body
         )
     carr_inds = np.where(np.diff(
@@ -74,7 +73,7 @@ def download_br_data(interval, body) :
 
 def make_hourly_medians(datetimes,data) :
     timestamps = np.array([t.timestamp() for t in datetimes])  
-    datetime_hourly = h.gen_dt_arr(
+    datetime_hourly = utils.gen_dt_arr(
         datetimes[0],
         datetimes[-1],
         cadence_days=1/24
@@ -89,7 +88,7 @@ def make_hourly_medians(datetimes,data) :
 
 
 def create_polarity_obs(center_date,body,return_br,
-                        save_dir=os.path.join("nlmetric","data")
+                        save_dir=os.path.join(f"{__path__[0]}","data")
                         ):
     '''
     Given `center_date`:`datetime.datetime` and `spacecraft`*:`str`,
@@ -124,10 +123,10 @@ def create_polarity_obs(center_date,body,return_br,
     
 
     ## Interpolate to 1 hour edges inside carrington interval
-    datetimes_hourly=h.gen_dt_arr(*carrington_interval,cadence_days=1/24)
-    br_hourly = interp1d(h.datetime2unix(times_medians),
+    datetimes_hourly=utils.gen_dt_arr(*carrington_interval,cadence_days=1/24)
+    br_hourly = interp1d(utils.datetime2unix(times_medians),
                          br_medians,
-                         bounds_error=False)(h.datetime2unix(datetimes_hourly))
+                         bounds_error=False)(utils.datetime2unix(datetimes_hourly))
 
     if return_br :  return datetimes_hourly, br_hourly # Return br in nT
     else : return  datetimes_hourly,np.sign(br_hourly) # or return sign(br)
@@ -152,14 +151,14 @@ def create_polarity_model(model_NL_map, center_date, body,
 
     carrington_interval = determine_carrington_interval(center_date,body)
 
-    datetimes_hourly = h.gen_dt_arr(*carrington_interval,
+    datetimes_hourly = utils.gen_dt_arr(*carrington_interval,
                                     cadence_days=1/24)
     
-    carrington_trajectory = h.create_carrington_trajectory(
+    carrington_trajectory = projection.create_carrington_trajectory(
         datetimes_hourly,body,obstime_ref=center_date
         )
     
-    projected_trajectory = h.ballistically_project(carrington_trajectory,
+    projected_trajectory = projection.ballistically_project(carrington_trajectory,
                                                    r_inner=altitude)
     
     polarity_modeled = sunpy.map.sample_at_coords(model_NL_map, 
@@ -173,9 +172,9 @@ def compute_NL_metric(model_tseries,obs_tseries) :
     aligned, compute the dot product of the data, and divide by the
     number of the datapoints to obtain the NL_metric score.
     '''
-    model_tstamps = h.datetime2unix(model_tseries[0])
+    model_tstamps = utils.datetime2unix(model_tseries[0])
     model_pol = np.sign(model_tseries[1])
-    obs_tstamps = h.datetime2unix(obs_tseries[0])
+    obs_tstamps = utils.datetime2unix(obs_tseries[0])
     obs_pol = np.sign(obs_tseries[1])
 
     if ((len(model_tstamps) != len(obs_tstamps)) |

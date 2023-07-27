@@ -9,18 +9,12 @@ import astropy.units as u
 from astropy.coordinates import SkyCoord
 import numpy as np
 import os
-import wlmetric.io_functions # functions to read in maps from different sources
 from scipy.ndimage import gaussian_filter1d
-import sunpy.map
-from scipy.interpolate import interp1d
 import cv2
 from astropy.convolution import Gaussian2DKernel
 from astropy.convolution import interpolate_replace_nans, convolve
 from scipy.signal import find_peaks
-
-import sys
-sys.path.append("..")
-import helpers as h
+import coronamagpy.utils as utils
 
 #Score functions definitions
 def sigmoid(x,a,b):
@@ -63,7 +57,7 @@ def extract_edge_coords(wl_map) :
 
 # functions for processing wl data
 def rm_artifacts(data:np.ndarray|list, width:tuple|list|np.ndarray):
-    h.type_check(locals(),rm_artifacts)
+    utils.type_check(locals(),rm_artifacts)
 
     artifacts = np.zeros(np.shape(data))
     data_nans = np.isnan(data)
@@ -94,7 +88,7 @@ def rm_artifacts(data:np.ndarray|list, width:tuple|list|np.ndarray):
 
     return filtered
 def where_streamers(data:np.ndarray|list):
-    h.type_check(locals(),where_streamers)
+    utils.type_check(locals(),where_streamers)
     args_row = []
     args_col = []
     thickness = []
@@ -112,7 +106,7 @@ def where_streamers(data:np.ndarray|list):
 
     return (args_row, args_col), thickness
 def clean(wldata:np.ndarray|list, width=(1,10)):
-    h.type_check(locals(),clean)
+    utils.type_check(locals(),clean)
 
     # remove map artifacts
     wldata = rm_artifacts(wldata, width)
@@ -126,7 +120,7 @@ def clean(wldata:np.ndarray|list, width=(1,10)):
     return cleaned
 
 def extract_SMB(wl_map,smoothing_factor=20,
-                save_dir=os.path.join("wlmetric","data"),method='Simple'
+                save_dir=os.path.join(f"{__path__[0]}","data"),method='Simple'
                 ):
     '''
     Given a precomputed input White light carrington map (`wl_map`),

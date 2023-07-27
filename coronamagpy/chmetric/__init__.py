@@ -7,19 +7,17 @@ fits file
 3) <DO CH SCORE> Read in an "observed CH" map and "modeled CH" map, 
 compute precision, recall and f-score
 '''
-from astropy.coordinates import SkyCoord
 import astropy.units as u
 import datetime
 import coronamagpy.chmetric.ezseg as ezseg
 import os
 import numpy as np
-import pandas as pd
 from pfsspy import utils as pfss_utils
-from sunpy.coordinates import get_earth, sun
+from sunpy.coordinates import sun
 from sunpy.net import Fido, attrs as a
 import sunpy.map
 import sys
-import helpers as h
+import coronamagpy.utils as utils
 import warnings 
 import glob
 
@@ -27,9 +25,9 @@ if os.path.exists(os.path.join(
     "CHMAP","software","ezseg",
     f"ezsegwrapper.cpython-{sys.version_info.major}{sys.version_info.minor}-darwin.so"
     )) : 
-    import CHMAP.software.ezseg.ezsegwrapper as ezsegwrapper
+    import coronamagpy.CHMAP.software.ezseg.ezsegwrapper as ezsegwrapper
 elif len(glob.glob(f"./CHMAP/software/ezseg/ezsegwrapper.*.so")) > 0 : 
-    import CHMAP.software.ezseg.ezsegwrapper as ezsegwrapper
+    import coronamagpy.CHMAP.software.ezseg.ezsegwrapper as ezsegwrapper
 else : warnings.warn("EZSEG Wrapper not found, chmetric.extract_obs_ch will only work with `ezseg_version==python`")
 
 def most_prob_val_log2d(data) :
@@ -66,7 +64,7 @@ def create_euv_map(center_date,
                    euv_obs_cadence=1*u.day,
                    gaussian_filter_width = 30*u.deg,
                    days_around = 14, # number of days plus/minus the center date to create the map
-                   save_dir=os.path.join('chmetric','data'),
+                   save_dir=os.path.join(f'{__path__[0]}','data'),
                    replace=False,
                    wvln = 193*u.angstrom
                    ) :
@@ -166,7 +164,7 @@ def create_euv_map(center_date,
 
 def extract_obs_ch(euv_map_path,
                    replace=False,
-                   save_dir = os.path.join('chmetric','data'),
+                   save_dir = os.path.join(f'{__path__[0]}','data'),
                    ezseg_version="fortran", # will add fortran wrapper option
                    ezseg_params = {"thresh1":10, ## Seed threshold
                                    "thresh2":75, ## Growing Threshhold
@@ -248,7 +246,7 @@ def do_ch_score(dt_model, chmap_model, chmap_obs,auto_interp=False) :
     if dimensions don't match. Once validation is complete, compute 
     precision, recall and f-score on the two binary maps.
     '''
-    chmap_model = h.csv2map(chmap_model, dt_model)
+    chmap_model = utils.csv2map(chmap_model, dt_model)
     chmap_obs = sunpy.map.Map(chmap_obs)
     if auto_interp :
         chmap_obs = chmap_obs.reproject_to(chmap_model.wcs)

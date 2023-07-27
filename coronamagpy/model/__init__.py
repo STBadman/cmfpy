@@ -1,11 +1,10 @@
 # %%
-import sys
-sys.path.append("coronamagpy")
-import chmetric
-import wlmetric
-import nlmetric
-from wlmetric import io_functions as io_WL
-import helpers as h
+import coronamagpy.chmetric as chmetric
+import coronamagpy.wlmetric as wlmetric
+import coronamagpy.nlmetric as nlmetric
+import coronamagpy.wlmetric.io_functions as io_WL
+import coronamagpy.utils as utils
+import coronamagpy.projection as projection
  
 import urllib.request
 import os
@@ -22,7 +21,7 @@ from scipy.signal import find_peaks
 import datetime
 
 def parse_map(data:np.ndarray|list):
-    h.type_check(locals(),parse_map)
+    utils.type_check(locals(),parse_map)
 
     sinlat = np.linspace(-1,1,np.shape(data)[0])
     long = np.linspace(0,360,np.shape(data)[1])
@@ -34,20 +33,20 @@ def parse_map(data:np.ndarray|list):
     return np.vstack((ln1,body))
 
 def get_magneto(date:str, delim:str=':', return_name:bool=False):
-    h.type_check(locals(),get_magneto)
+    utils.type_check(locals(),get_magneto)
 
     year, month, day, time = np.array(date.split(delim),dtype=str)
         
     datestr = f'{year}{month}{day}{time}'
     prefix = f'adapt_'
     dataname = f'{prefix}{datestr}.ftz.gz'
-    datadir = f'Model/data/'
+    datadir = f'{__path__[0]}/data/'
 
     if not os.path.exists(f'{datadir}'): os.makedirs(f'{datadir}')
 
     if not os.path.exists(f'{datadir}/{dataname}'):
         url = f'https://gong.nso.edu/adapt/maps/gong/{year}/'
-        data_url = h.listhtml(url=url,contains=f'{datestr}')[0]
+        data_url = utils.listhtml(url=url,contains=f'{datestr}')[0]
 
         urllib.request.urlretrieve(f'{data_url}', f'{datadir}/{dataname}')
 
@@ -59,7 +58,7 @@ def adapt2pfsspy(filepath:str, #must already exist on your computer
                  realization:str="mean", #which slice of the adapt ensemble to choose
                  return_magnetogram:bool=False # switch to true for function to return the input magnetogram
                 ):
-    h.type_check(locals(),adapt2pfsspy)
+    utils.type_check(locals(),adapt2pfsspy)
 
     # Load the FITS file into memory
     # ADAPT includes 12 "realizations" - model ensembles
@@ -99,7 +98,7 @@ def pfss2flines(pfsspy_output, # pfsspy output object
                 skycoord_in=None, # Use custom set of starting grid poitns
                 max_steps:int=1000 # max steps tracer should take before giving up
                 ) :
-    h.type_check(locals(),pfss2flines)
+    utils.type_check(locals(),pfss2flines)
 
     # Tracing if grid
     if skycoord_in is None  :
@@ -130,10 +129,10 @@ def pfss(date:str,
            rss:int|float=2.5,
            return_name:bool=False
            ):
-    h.type_check(locals(),pfss)
+    utils.type_check(locals(),pfss)
 
-    outdir = 'Model/out'
-    datadir = f'Model/data'
+    outdir = f'{__path__[0]}/out'
+    datadir = f'{__path__[0]}/data'
 
     if not os.path.exists(f'{outdir}'): os.makedirs(f'{outdir}')
 
@@ -184,12 +183,12 @@ def find_close_magneto_date(date:str,
                           delim:str=':',
                           days_around:int=14
                           ):
-    h.type_check(locals(),find_close_magneto_date)
+    utils.type_check(locals(),find_close_magneto_date)
 
     year, month, day, time = np.array(date.split(delim),dtype=str)
 
     url = f'https://gong.nso.edu/adapt/maps/gong/{year}/'
-    files = h.listhtml(url, contains=year, include_url=False)
+    files = utils.listhtml(url, contains=year, include_url=False)
 
 
     target_day = 30*int(month) + int(day) + int(time)/2400
@@ -222,9 +221,9 @@ def model(date:str,
           days_around:int|float=14,
           modeltype:str='PFSS',
           **modelkwargs):
-    h.type_check(locals(),model)
+    utils.type_check(locals(),model)
 
-    datetime = h.parse_to_datetime(date,delim=delim)
+    datetime = utils.parse_to_datetime(date,delim=delim)
 
     if modeltype == 'PFSS':
         modeldate = find_close_magneto_date(date,delim=delim,days_around=days_around)
@@ -233,13 +232,13 @@ def model(date:str,
 
     else: raise NameError(f"Model '{modeltype}' is not implemented")
 
-    datetime_model = h.parse_to_datetime(modeldate)
+    datetime_model = utils.parse_to_datetime(modeldate)
 
-    chmap_model_path = f'Model/out/{oflname}'
-    nlmap_model_path = f'Model/out/{nlname}'
+    chmap_model_path = f'{__path__[0]}/out/{oflname}'
+    nlmap_model_path = f'{__path__[0]}/out/{nlname}'
 
-    chmap_model = h.csv2map(chmap_model_path, datetime_model)
-    nlmap_model = h.csv2map(nlmap_model_path, datetime_model)
+    chmap_model = utils.csv2map(chmap_model_path, datetime_model)
+    nlmap_model = utils.csv2map(nlmap_model_path, datetime_model)
 
     return CoronalModel(modeltype=modeltype,
                         datetime=datetime,
@@ -260,7 +259,7 @@ class CoronalModel:
                  chmap_model,
                  nlmap_model,
                  modelkwargs):
-        h.type_check(locals(),CoronalModel.__init__)
+        utils.type_check(locals(),CoronalModel.__init__)
         
         self.modeltype = modeltype
         
@@ -366,7 +365,7 @@ class CoronalModel:
         # Load location is determined by input date.
 
         WL_date = self.datetime
-        WL_path = "./wlmetric/data"
+        WL_path = f"{wlmetric.__path__[0]}/data"
         if self.datetime < datetime.datetime(2020,4,27): WL_source = 'V3'
         else: WL_source = 'connect_tool'
 
@@ -392,7 +391,7 @@ class CoronalModel:
 
         WL_date = self.datetime
 
-        WL_path = "./wlmetric/data"
+        WL_path = f"{wlmetric.__path__[0]}/data"
         if self.datetime < datetime.datetime(2020,4,27): WL_source = 'V3'
         else: WL_source = 'connect_tool'
         
@@ -469,10 +468,10 @@ class CoronalModel:
         # We first need to use some of the helpers to create the trajectories
         
         
-        carrington_trajectory_l1 = h.create_carrington_trajectory(
+        carrington_trajectory_l1 = projection.create_carrington_trajectory(
             polarity_pred_l1[0],"L1",obstime_ref=self.datetime_model
             )
-        trajectory_l1 = h.ballistically_project(carrington_trajectory_l1,
+        trajectory_l1 = projection.ballistically_project(carrington_trajectory_l1,
                                                     r_inner=self.rss*u.R_sun) 
 
 
