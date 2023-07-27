@@ -228,7 +228,8 @@ def model(date:str,
 
     if modeltype == 'PFSS':
         modeldate = find_close_magneto_date(date,delim=delim,days_around=days_around)
-        oflname, nlname = pfss(modeldate,delim=delim,return_name=True,**modelkwargs)
+        oflname, nlname, rss = pfss(modeldate,delim=delim,return_name=True,**modelkwargs)
+        modelkwargs['rss'] = rss
 
     else: raise NameError(f"Model '{modeltype}' is not implemented")
 
@@ -246,7 +247,8 @@ def model(date:str,
                         chmap_model_path=chmap_model_path,
                         nlmap_model_path=nlmap_model_path,
                         chmap_model=chmap_model,
-                        nlmap_model=nlmap_model)
+                        nlmap_model=nlmap_model,
+                        modelkwargs=modelkwargs)
 
 class CoronalModel:
     def __init__(self,
@@ -256,10 +258,14 @@ class CoronalModel:
                  chmap_model_path:str,
                  nlmap_model_path:str,
                  chmap_model,
-                 nlmap_model):
+                 nlmap_model,
+                 modelkwargs):
         h.type_check(locals(),CoronalModel.__init__)
         
         self.modeltype = modeltype
+        
+        if 'rss' in modelkwargs: self.rss = modelkwargs['rss']
+
         self.datetime = datetime
         self.datetime_model = datetime_model
 
@@ -428,7 +434,7 @@ class CoronalModel:
 
     def nlmetric(self):
         observed_field_l1 = nlmetric.create_polarity_obs(self.datetime,"L1",return_br=True)
-        polarity_pred_l1 = nlmetric.create_polarity_model(self.nlmap_model,self.datetime_model,"L1")
+        polarity_pred_l1 = nlmetric.create_polarity_model(self.nlmap_model,self.datetime_model,"L1",altitude=self.rss*u.R_sun)
 
         ######################
         
@@ -467,7 +473,7 @@ class CoronalModel:
             polarity_pred_l1[0],"L1",obstime_ref=self.datetime_model
             )
         trajectory_l1 = h.ballistically_project(carrington_trajectory_l1,
-                                                    r_inner=2.5*u.R_sun) 
+                                                    r_inner=self.rss*u.R_sun) 
 
 
         fig=plt.figure(figsize=(12,6))
