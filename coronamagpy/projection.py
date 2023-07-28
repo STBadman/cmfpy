@@ -82,17 +82,7 @@ def create_carrington_trajectory(datetime_array,body,obstime_ref=None) :
     return trajectory_carrington
 
 
-def gen_dt_arr(dt_init,dt_final,cadence_days=1) :
-    """
-    'Generate Datetime Array'
-    Get array of datetime.datetime from {dt_init} to {dt_final} every 
-    {cadence_days} days
-    """
-    dt_list = []
-    while dt_init < dt_final :
-        dt_list.append(dt_init)
-        dt_init += datetime.timedelta(days=cadence_days)
-    return np.array(dt_list)
+
 
 def carr2SkyCoord(lon,lat,radius,obstime) :
     """

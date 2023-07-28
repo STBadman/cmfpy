@@ -74,3 +74,15 @@ def datetime2unix(dt_arr) :
 def unix2datetime(ut_arr) : 
     """Convert 1D array of unix timestamps (float) to `datetime.datetime`"""
     return np.array([datetime.datetime.utcfromtimestamp(ut) for ut in ut_arr])
+
+def gen_dt_arr(dt_init,dt_final,cadence_days=1) :
+    """
+    'Generate Datetime Array'
+    Get array of datetime.datetime from {dt_init} to {dt_final} every 
+    {cadence_days} days
+    """
+    dt_list = []
+    while dt_init < dt_final :
+        dt_list.append(dt_init)
+        dt_init += datetime.timedelta(days=cadence_days)
+    return np.array(dt_list)
