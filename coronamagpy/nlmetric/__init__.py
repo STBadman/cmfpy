@@ -23,7 +23,7 @@ def determine_carrington_interval(center_date,body) :
         )
     inst_lon = inst_body_position.lon
     inst_antipode = (inst_body_position.lon.value + 180 % 360) *u.deg
-    two_month_window = projection.gen_dt_arr(
+    two_month_window = utils.gen_dt_arr(
         center_date-datetime.timedelta(days=30),
         center_date+datetime.timedelta(days=30),
         cadence_days=6/24
@@ -73,7 +73,7 @@ def download_br_data(interval, body) :
 
 def make_hourly_medians(datetimes,data) :
     timestamps = np.array([t.timestamp() for t in datetimes])  
-    datetime_hourly = projection.gen_dt_arr(
+    datetime_hourly = utils.gen_dt_arr(
         datetimes[0],
         datetimes[-1],
         cadence_days=1/24
@@ -123,7 +123,7 @@ def create_polarity_obs(center_date,body,return_br,
     
 
     ## Interpolate to 1 hour edges inside carrington interval
-    datetimes_hourly=projection.gen_dt_arr(*carrington_interval,cadence_days=1/24)
+    datetimes_hourly=utils.gen_dt_arr(*carrington_interval,cadence_days=1/24)
     br_hourly = interp1d(utils.datetime2unix(times_medians),
                          br_medians,
                          bounds_error=False)(utils.datetime2unix(datetimes_hourly))
@@ -151,7 +151,7 @@ def create_polarity_model(model_NL_map, center_date, body,
 
     carrington_interval = determine_carrington_interval(center_date,body)
 
-    datetimes_hourly = projection.gen_dt_arr(*carrington_interval,
+    datetimes_hourly = utils.gen_dt_arr(*carrington_interval,
                                     cadence_days=1/24)
     
     carrington_trajectory = projection.create_carrington_trajectory(
