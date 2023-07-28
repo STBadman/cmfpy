@@ -1,3 +1,4 @@
-[submodule "coronamagpy/CHMAP"]
-	path = coronamagpy/CHMAP
-	url = git@github.com:predsci/CHMAP.git
+
+[submodule "coronamagpy/chmetric/chmap"]
+	path = coronamagpy/chmetric/chmap
+	url = https://github.com/andikisare/chmap
