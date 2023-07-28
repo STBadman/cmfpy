@@ -4,6 +4,7 @@ channels:
   - conda-forge
 dependencies:
   - astropy == 5.3
+  - opencv
   - jupyter
   - matplotlib
   - numpy == 1.24.3
@@ -23,3 +24,4 @@ dependencies:
     - heliopy == 1.0.0
     - streamtracer
     - pyspedas
+    - pytplot-mpl-temp
