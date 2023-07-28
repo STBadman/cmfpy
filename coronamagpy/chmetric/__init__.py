@@ -9,7 +9,7 @@ compute precision, recall and f-score
 '''
 import astropy.units as u
 import datetime
-import coronamagpy.chmetric.ezseg as ezseg
+import coronamagpy.chmetric.chmap as chmap
 import os
 import numpy as np
 from pfsspy import utils as pfss_utils
@@ -18,7 +18,6 @@ from sunpy.net import Fido, attrs as a
 import sunpy.map
 import sys
 import coronamagpy.utils as utils
-import coronamagpy.chmetric.chmap.ezsegwrapper as ezsegwrapper
 
 def most_prob_val_log2d(data) :
     # Assumes data vals are within range 0.1-1000
@@ -180,7 +179,7 @@ def extract_obs_ch(euv_map_path,
             valid_data = ~np.isnan(euv_map.data)
 
             ## Python version via D. H. Brooks
-            segmented_array = ezseg.ezseg_algorithm(euvmap_array, ## Data to extract contours from
+            segmented_array = chmap.ezsegpy(euvmap_array, ## Data to extract contours from
                                                     valid_data, ## Valid pixels
                                                     euvmap_array.shape[0], ## x-dimension of array
                                                     euvmap_array.shape[1], ## y-dimension of array
@@ -211,7 +210,7 @@ def extract_obs_ch(euv_map_path,
 
             # fortran chd algorithm
             np.seterr(divide='ignore')
-            ezseg_output, iters_used = ezsegwrapper.ezseg(np.log10(data), use_chd, nt=nx, np=ny, 
+            ezseg_output, iters_used = chmap.ezseg(np.log10(data), use_chd, nt=nx, np=ny, 
                                                          thresh1=ezseg_params["thresh1"],
                                                          thresh2=ezseg_params["thresh2"],
                                                          nc=ezseg_params["nc"],
