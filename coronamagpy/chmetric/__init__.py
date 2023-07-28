@@ -18,17 +18,7 @@ from sunpy.net import Fido, attrs as a
 import sunpy.map
 import sys
 import coronamagpy.utils as utils
-import warnings 
-import glob
-
-if os.path.exists(os.path.join(
-    "CHMAP","software","ezseg",
-    f"ezsegwrapper.cpython-{sys.version_info.major}{sys.version_info.minor}-darwin.so"
-    )) : 
-    import coronamagpy.CHMAP.software.ezseg.ezsegwrapper as ezsegwrapper
-elif len(glob.glob(f"./CHMAP/software/ezseg/ezsegwrapper.*.so")) > 0 : 
-    import coronamagpy.CHMAP.software.ezseg.ezsegwrapper as ezsegwrapper
-else : warnings.warn("EZSEG Wrapper not found, chmetric.extract_obs_ch will only work with `ezseg_version==python`")
+import coronamagpy.chmetric.chmap.ezsegwrapper as ezsegwrapper
 
 def most_prob_val_log2d(data) :
     # Assumes data vals are within range 0.1-1000
@@ -233,7 +223,6 @@ def extract_obs_ch(euv_map_path,
             ch_map_obs = sunpy.map.Map(chd_result.astype(int), euv_map.meta)                
             ch_map_obs.save(savepath, overwrite=replace)
         
-
     return savepath
 
 
