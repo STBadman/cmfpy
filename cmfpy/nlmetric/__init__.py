@@ -8,12 +8,11 @@ most probable polarity for 1 carrington rotation centered on timestamp
 import astropy.units as u
 import datetime
 import numpy as np
-import coronamagpy.utils as utils
-import coronamagpy.projection as projection
+import cmfpy.utils as utils
+import cmfpy.projection as projection
+from cmfpy.io import download_br_data
 import os
-### Change pyspedas directory to nlmetric/data
-os.environ['SPEDAS_DATA_DIR']=os.path.join(f"{__path__[0]}","data")
-import pyspedas
+
 from scipy.interpolate import interp1d
 import sunpy.coordinates
 
@@ -38,38 +37,6 @@ def determine_carrington_interval(center_date,body) :
     carrington_interval = two_month_window[carr_inds]
 
     return carrington_interval
-
-def download_br_data(interval, body) :
-    dl_funcs_and_kwargs = {
-        "L1":(
-            # pyspedas.wind.mfi,
-            # {"varnames":"BGSE"}
-            pyspedas.omni.data,
-            {"varnames":"BX_GSE"}
-            ),
-        "solar orbiter":(
-            pyspedas.solo.mag,
-            {"datatype":"rtn-normal-1-minute"}
-            ),
-        "psp":(
-            pyspedas.psp.fields,
-            {"datatype":"mag_rtn_1min"}
-            ),
-        "stereo-a":(
-            pyspedas.stereo.mag,
-            {"probe":"a"}
-            #pyspedas.stereo.mag, #replace when pyspedas pr comes through
-            #{"probe":"a"}
-        ),
-        "stereo-b":(
-            pyspedas.stereo.mag,
-            {"probe":"b"}
-            #pyspedas.stereo.mag, #replace when pyspedas pr comes through
-            #{"probe":"b"}
-        )
-    }
-    dl_func,kwargs = dl_funcs_and_kwargs.get(body)
-    return dl_func(trange=interval,**kwargs,notplot=True)
 
 def make_hourly_medians(datetimes,data) :
     timestamps = np.array([t.timestamp() for t in datetimes])  
@@ -106,7 +73,10 @@ def create_polarity_obs(center_date,body,return_br,
     carrington_interval = determine_carrington_interval(
         center_date,body
         )
-    data = download_br_data(carrington_interval, body)
+    ### Change pyspedas directory to nlmetric/data
+    path=os.path.join(f"{__path__[0]}","data")
+    
+    data = download_br_data(carrington_interval, body, path=path)
     
     if body == "L1" : 
         times_medians,br_medians = make_hourly_medians(

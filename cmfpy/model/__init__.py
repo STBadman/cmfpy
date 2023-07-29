@@ -1,10 +1,10 @@
 # %%
-import coronamagpy.chmetric as chmetric
-import coronamagpy.wlmetric as wlmetric
-import coronamagpy.nlmetric as nlmetric
-import coronamagpy.wlmetric.io_functions as io_WL
-import coronamagpy.utils as utils
-import coronamagpy.projection as projection
+import cmfpy.chmetric as chmetric
+import cmfpy.wlmetric as wlmetric
+import cmfpy.nlmetric as nlmetric
+import cmfpy.io
+import cmfpy.utils as utils
+import cmfpy.projection as projection
  
 import urllib.request
 import os
@@ -234,19 +234,14 @@ def model(date:str,
 
     datetime_model = utils.parse_to_datetime(modeldate)
 
-    chmap_model_path = f'{__path__[0]}/out/{oflname}'
-    nlmap_model_path = f'{__path__[0]}/out/{nlname}'
-
-    chmap_model = utils.csv2map(chmap_model_path, datetime_model)
-    nlmap_model = utils.csv2map(nlmap_model_path, datetime_model)
+    chmodel_path = f'{__path__[0]}/out/{oflname}'
+    nlmodel_path = f'{__path__[0]}/out/{nlname}'
 
     return CoronalModel(modeltype=modeltype,
                         datetime=datetime,
                         datetime_model=datetime_model,
-                        chmap_model_path=chmap_model_path,
-                        nlmap_model_path=nlmap_model_path,
-                        chmap_model=chmap_model,
-                        nlmap_model=nlmap_model,
+                        chmodel_path=chmodel_path,
+                        nlmodel_path=nlmodel_path,
                         modelkwargs=modelkwargs)
 
 class CoronalModel:
@@ -254,10 +249,8 @@ class CoronalModel:
                  modeltype:str,
                  datetime:datetime.datetime,
                  datetime_model:datetime.datetime,
-                 chmap_model_path:str,
-                 nlmap_model_path:str,
-                 chmap_model,
-                 nlmap_model,
+                 chmodel_path:str,
+                 nlmodel_path:str,
                  modelkwargs):
         utils.type_check(locals(),CoronalModel.__init__)
         
@@ -268,11 +261,13 @@ class CoronalModel:
         self.datetime = datetime
         self.datetime_model = datetime_model
 
-        self.chmap_model_path = chmap_model_path
-        self.nlmap_model_path = nlmap_model_path
+        self.chmodel_path = chmodel_path
+        self.nlmodel_path = nlmodel_path
 
-        self.chmap_model = chmap_model
-        self.nlmap_model = nlmap_model
+
+    def chmodel(self): return utils.csv2map(self.chmodel_path, self.datetime_model)
+
+    def nlmodel(self): return utils.csv2map(self.nlmodel_path, self.datetime_model)
 
     def chmetric(self, replace:bool=False, days_around:int=14):
         euvmappath = chmetric.create_euv_map(self.datetime, 
@@ -294,10 +289,12 @@ class CoronalModel:
                                             )
 
         p,r,f = chmetric.do_ch_score(self.datetime_model,
-                                self.chmap_model_path,
+                                self.chmodel_path,
                                 ch_obs_path,
                                 auto_interp=True)
+
         return p,r,f
+    
     def plot_chmetric(self, replace:bool=False, days_around:int=14):
         datetime_euvmap = self.datetime
         euvmappath = chmetric.create_euv_map(datetime_euvmap, 
@@ -356,7 +353,7 @@ class CoronalModel:
         plt.ylabel('Latitude')
     
     def wlmetric(self, quiet:bool=True, method:str='Simple'):
-        from importlib import reload;reload(io_WL)
+        from importlib import reload;reload(cmfpy.io)
         #### Capability to create locally pending
 
         #### Load Precomputed Ones
@@ -369,19 +366,19 @@ class CoronalModel:
         if self.datetime < datetime.datetime(2020,4,27): WL_source = 'V3'
         else: WL_source = 'connect_tool'
 
-        [WL_fullpath,WL_date] = io_WL.get_WL_map(WL_date,
+        [WL_fullpath,WL_date] = cmfpy.io.get_WL_map(WL_date,
                                                 WL_path,
                                                 WL_source,
                                                 quiet=quiet)
 
-        wlmap = io_WL.WLfile2map(WL_fullpath,WL_date,WL_source)
+        wlmap = cmfpy.io.WLfile2map(WL_fullpath,WL_date,WL_source)
 
 
-        score = wlmetric.compute_WL_score(self.nlmap_model,wlmap,method=method)
+        score = wlmetric.compute_WL_score(self.nlmodel(),wlmap,method=method)
         return score/100
     
     def plot_wlmetric(self, quiet:bool=True,method='Simple'):
-        from importlib import reload;reload(io_WL)
+        from importlib import reload;reload(cmfpy.io)
         #### Capability to create locally pending
 
         #### Load Precomputed Ones
@@ -395,12 +392,13 @@ class CoronalModel:
         if self.datetime < datetime.datetime(2020,4,27): WL_source = 'V3'
         else: WL_source = 'connect_tool'
         
-        [WL_fullpath,WL_date] = io_WL.get_WL_map(WL_date,
+        [WL_fullpath,WL_date] = cmfpy.io.get_WL_map(WL_date,
                                                 WL_path,
                                                 WL_source,
                                                 quiet=quiet)
 
-        wlmap = io_WL.WLfile2map(WL_fullpath,WL_date,WL_source)
+        wlmap = cmfpy.io.WLfile2map(WL_fullpath,WL_date,WL_source)
+        nlmodel = self.nlmodel()
         
         ### INPUT : sunpy.map.Map from a White Light Carrington Map
         ### OUTPUT : astropy.coordinates.SkyCoord describing the 
@@ -411,20 +409,20 @@ class CoronalModel:
         ### As with the chmetric, the observed map is in constant latitude 
         # binning. For a fair comparison, we reproject to sine(latitude)
         # (CEA) binning.
-        wl_obs_cea = wlmap.reproject_to(self.nlmap_model.wcs)
+        wl_obs_cea = wlmap.reproject_to(nlmodel.wcs)
 
         ## Now we can plot the model and observations side by side
         fig = plt.figure(figsize=(20,5))
-        axmodel = fig.add_subplot(131,projection=self.nlmap_model.wcs) 
+        axmodel = fig.add_subplot(131,projection=nlmodel.wcs) 
         axobs = fig.add_subplot(132,projection=wl_obs_cea.wcs)
-        axcomp = fig.add_subplot(133,projection=self.nlmap_model.wcs)
+        axcomp = fig.add_subplot(133,projection=nlmodel.wcs)
 
-        self.nlmap_model.plot(cmap="coolwarm",axes=axmodel)
-        self.nlmap_model.draw_contours(levels=[0],colors=["black"],axes=axmodel)
+        nlmodel.plot(cmap="coolwarm",axes=axmodel)
+        nlmodel.draw_contours(levels=[0],colors=["black"],axes=axmodel)
         wl_obs_cea.plot(cmap="Greys_r",axes=axobs)
         axobs.plot_coord(smb,"o",color="gold",ms=1)
-        self.nlmap_model.plot(cmap="coolwarm",axes=axcomp,vmin=-1.5,vmax=1.5)
-        self.nlmap_model.draw_contours(levels=[0],colors=["black"],axes=axcomp,label="Model")
+        nlmodel.plot(cmap="coolwarm",axes=axcomp,vmin=-1.5,vmax=1.5)
+        nlmodel.draw_contours(levels=[0],colors=["black"],axes=axcomp,label="Model")
         axcomp.plot_coord(smb,"o",color="gold",ms=1,label="Observed")
 
         axmodel.set_title("Modeled Neutral Line")
@@ -433,7 +431,7 @@ class CoronalModel:
 
     def nlmetric(self):
         observed_field_l1 = nlmetric.create_polarity_obs(self.datetime,"L1",return_br=True)
-        polarity_pred_l1 = nlmetric.create_polarity_model(self.nlmap_model,self.datetime_model,"L1",altitude=self.rss*u.R_sun)
+        polarity_pred_l1 = nlmetric.create_polarity_model(self.nlmodel(),self.datetime_model,"L1",altitude=self.rss*u.R_sun)
 
         ######################
         
@@ -443,9 +441,11 @@ class CoronalModel:
         l1_nl_score = nlmetric.compute_NL_metric(polarity_pred_l1,observed_field_l1)
 
         return l1_nl_score
+    
     def plot_nlmetric(self):
+        nlmodel = self.nlmodel()
         observed_field_l1 = nlmetric.create_polarity_obs(self.datetime,"L1",return_br=True)
-        polarity_pred_l1 = nlmetric.create_polarity_model(self.nlmap_model,self.datetime_model,"L1")
+        polarity_pred_l1 = nlmetric.create_polarity_model(nlmodel,self.datetime_model,"L1")
         
         ######################
 
@@ -476,11 +476,11 @@ class CoronalModel:
 
 
         fig=plt.figure(figsize=(12,6))
-        ax = fig.add_subplot(projection=self.nlmap_model.wcs)
-        self.nlmap_model.plot(cmap="coolwarm",vmin=-2,vmax=2)
+        ax = fig.add_subplot(projection=nlmodel.wcs)
+        nlmodel.plot(cmap="coolwarm",vmin=-2,vmax=2)
 
 
-        ax.scatter(self.nlmap_model.world_to_pixel(trajectory_l1).x,
-                self.nlmap_model.world_to_pixel(trajectory_l1).y,
+        ax.scatter(nlmodel.world_to_pixel(trajectory_l1).x,
+                nlmodel.world_to_pixel(trajectory_l1).y,
                 c=plt.cm.bwr(observed_field_l1[1]),s=2
                 )

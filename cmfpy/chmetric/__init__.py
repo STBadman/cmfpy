@@ -9,7 +9,7 @@ compute precision, recall and f-score
 '''
 import astropy.units as u
 import datetime
-import coronamagpy.chmetric.chmap as chmap
+import cmfpy.chmetric.chmap as chmap
 import os
 import numpy as np
 from pfsspy import utils as pfss_utils
@@ -17,7 +17,7 @@ from sunpy.coordinates import sun
 from sunpy.net import Fido, attrs as a
 import sunpy.map
 import sys
-import coronamagpy.utils as utils
+import cmfpy.utils as utils
 
 def most_prob_val_log2d(data) :
     # Assumes data vals are within range 0.1-1000

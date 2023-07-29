@@ -14,7 +14,7 @@ import cv2
 from astropy.convolution import Gaussian2DKernel
 from astropy.convolution import interpolate_replace_nans, convolve
 from scipy.signal import find_peaks
-import coronamagpy.utils as utils
+import cmfpy.utils as utils
 
 #Score functions definitions
 def sigmoid(x,a,b):
@@ -234,11 +234,6 @@ def compute_WL_score(model_nl_map,obs_wl_map,method='Simple') :
             print("Computation of the real streamer belt thickness is not implemented yet!! Switching to fixed mode: thick=5deg.")
             norm_val = 5*np.ones(np.shape(min_separation)) #in deg
     else : raise ValueError(f"norm_mode {norm_mode} not in {norm_mode_all}")'''
-    print(np.shape(min_separation))
-    print(np.shape(norm_val))
-    print(np.mean(norm_val))
-
-    print(min_separation)
 
     min_separation = min_separation/norm_val
 

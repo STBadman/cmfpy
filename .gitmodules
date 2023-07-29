@@ -1,4 +1,4 @@
 
-[submodule "coronamagpy/chmetric/chmap"]
-	path = coronamagpy/chmetric/chmap
+[submodule "cmfpy/chmetric/chmap"]
+	path = cmfpy/chmetric/chmap
 	url = https://github.com/andikisare/chmap
