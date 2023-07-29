@@ -8,7 +8,7 @@ from bs4 import BeautifulSoup
 import requests
 from typing import get_type_hints
 
-def csv2map(csvpath,datetime_csv) :
+def npy2map(csvpath,datetime_csv) :
     """
     Helper function which expects CSV files prepared in the same format as
     provided in Badman+2022 and the example files in ./example_model_data
@@ -16,7 +16,7 @@ def csv2map(csvpath,datetime_csv) :
     column are coordinates, generates header, creates sunpy.map.Map
     """
     
-    data = np.array(pd.read_csv(csvpath,index_col=0,header=0,dtype=float))[1:,1:]
+    data = np.load(csvpath,allow_pickle=True)
 
     header = pfss_utils.carr_cea_wcs_header(datetime_csv,
                                             data.T.shape,

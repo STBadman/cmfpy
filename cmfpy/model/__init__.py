@@ -19,6 +19,8 @@ import astropy.coordinates
 import astropy.units as u
 from scipy.signal import find_peaks
 import datetime
+__cachepath__ = f'{__path__[0]}/__cache__'
+if not os.path.exists(__cachepath__): os.makedirs(__cachepath__)
 
 def parse_map(data:np.ndarray|list):
     utils.type_check(locals(),parse_map)
@@ -26,9 +28,9 @@ def parse_map(data:np.ndarray|list):
     sinlat = np.linspace(-1,1,np.shape(data)[0])
     long = np.linspace(0,360,np.shape(data)[1])
 
-    body = np.column_stack((sinlat, data)).astype(str)
-    ln1 = [str(),]
-    ln1 = np.hstack((ln1,long.astype(str)))
+    body = np.column_stack((sinlat, data))
+    ln1 = [float(),]
+    ln1 = np.hstack((ln1,long))
     
     return np.vstack((ln1,body))
 
@@ -89,7 +91,7 @@ def adapt2pfsspy(filepath:str, #must already exist on your computer
         peri_input = pfsspy.Input(adapt_map_input, nr, rss)
         peri_output = pfsspy.pfss(peri_input)
         return peri_output
-
+  
 def pfss2flines(pfsspy_output, # pfsspy output object
                 nth:int=18,nph:int=36, # number of tracing grid points
                 rect:np.ndarray|list|tuple=[-1,1,0,360], #sub-region of sun to trace (default is whole sun)
@@ -138,8 +140,8 @@ def pfss(date:str,
 
     magname = get_magneto(date,delim,return_name=True)
 
-    ofl_name = f'ofl_{rss}_{magname[6:18]}.csv'
-    nl_name = f'nl_{rss}_{magname[6:18]}.csv'
+    ofl_name = f'ofl_{rss}_{magname[6:18]}.npy'
+    nl_name = f'nl_{rss}_{magname[6:18]}.npy'
 
     if not os.path.exists(f'{outdir}/{ofl_name}') or not os.path.exists(f'{outdir}/{nl_name}'):
 
@@ -162,8 +164,8 @@ def pfss(date:str,
         nl_out = parse_map(nlmap)
 
 
-        np.savetxt(f'{outdir}/{ofl_name}', ofl_out, fmt = '%s', delimiter=',')
-        np.savetxt(f'{outdir}/{nl_name}', nl_out, fmt = '%s', delimiter=',')
+        np.save(f'{outdir}/{ofl_name}', ofl_out, allow_pickle=True)
+        np.save(f'{outdir}/{nl_name}', nl_out, allow_pickle=True)
 
     if return_name: return ofl_name, nl_name, rss
 
@@ -187,9 +189,12 @@ def find_close_magneto_date(date:str,
 
     year, month, day, time = np.array(date.split(delim),dtype=str)
 
-    url = f'https://gong.nso.edu/adapt/maps/gong/{year}/'
-    files = utils.listhtml(url, contains=year, include_url=False)
+    if not os.path.exists(f'{__cachepath__}/magneto_urls_{year}.npy'):
+        url = f'https://gong.nso.edu/adapt/maps/gong/{year}/'
+        files = utils.listhtml(url, contains=year, include_url=False)
+        np.save(f'{__cachepath__}/magneto_urls_{year}.npy',files,allow_pickle=True)
 
+    else: files = np.load(f'{__cachepath__}/magneto_urls_{year}.npy',allow_pickle=True)
 
     target_day = 30*int(month) + int(day) + int(time)/2400
 
@@ -223,8 +228,6 @@ def model(date:str,
           **modelkwargs):
     utils.type_check(locals(),model)
 
-    datetime = utils.parse_to_datetime(date,delim=delim)
-
     if modeltype == 'PFSS':
         modeldate = find_close_magneto_date(date,delim=delim,days_around=days_around)
         oflname, nlname, rss = pfss(modeldate,delim=delim,return_name=True,**modelkwargs)
@@ -234,23 +237,21 @@ def model(date:str,
 
     datetime_model = utils.parse_to_datetime(modeldate)
 
-    chmodel_path = f'{__path__[0]}/out/{oflname}'
-    nlmodel_path = f'{__path__[0]}/out/{nlname}'
+    chmap_path = f'{__path__[0]}/out/{oflname}'
+    nlmap_path = f'{__path__[0]}/out/{nlname}'
 
     return CoronalModel(modeltype=modeltype,
-                        datetime=datetime,
-                        datetime_model=datetime_model,
-                        chmodel_path=chmodel_path,
-                        nlmodel_path=nlmodel_path,
+                        datetime=datetime_model,
+                        chmap_path=chmap_path,
+                        nlmap_path=nlmap_path,
                         modelkwargs=modelkwargs)
 
 class CoronalModel:
     def __init__(self,
                  modeltype:str,
                  datetime:datetime.datetime,
-                 datetime_model:datetime.datetime,
-                 chmodel_path:str,
-                 nlmodel_path:str,
+                 chmap_path:str,
+                 nlmap_path:str,
                  modelkwargs):
         utils.type_check(locals(),CoronalModel.__init__)
         
@@ -259,17 +260,14 @@ class CoronalModel:
         if 'rss' in modelkwargs: self.rss = modelkwargs['rss']
 
         self.datetime = datetime
-        self.datetime_model = datetime_model
 
-        self.chmodel_path = chmodel_path
-        self.nlmodel_path = nlmodel_path
+        self.chmap_path = chmap_path
+        self.nlmap_path = nlmap_path
 
+        self.chmap = utils.npy2map(self.chmap_path, self.datetime)
+        self.nlmap = utils.npy2map(self.nlmap_path, self.datetime)
 
-    def chmodel(self): return utils.csv2map(self.chmodel_path, self.datetime_model)
-
-    def nlmodel(self): return utils.csv2map(self.nlmodel_path, self.datetime_model)
-
-    def chmetric(self, replace:bool=False, days_around:int=14):
+    def chmetric(self, replace:bool=False, days_around:int=14, ezseg_version='python'):
         euvmappath = chmetric.create_euv_map(self.datetime, 
                                                 days_around=days_around, replace=replace)
         euvmap = sunpy.map.Map(euvmappath)
@@ -278,8 +276,8 @@ class CoronalModel:
 
         ch_obs_path = chmetric.extract_obs_ch(  
                                                 euvmappath,
-                                                replace=replace,
-                                                ezseg_version='fortran',
+                                                replace=True,
+                                                ezseg_version=ezseg_version,
                                                 ezseg_params={
                                                     "thresh1":thresh1,#np.nanmax(euvmap.data.flatten())*0.07, ## Seed threshold
                                                     "thresh2":thresh2,#np.nanmax(euvmap.data.flatten())*0.101, ## Growing Threshhold
@@ -288,8 +286,8 @@ class CoronalModel:
                                                 }
                                             )
 
-        p,r,f = chmetric.do_ch_score(self.datetime_model,
-                                self.chmodel_path,
+        p,r,f = chmetric.do_ch_score(self.datetime,
+                                self.chmap,
                                 ch_obs_path,
                                 auto_interp=True)
 
@@ -374,7 +372,7 @@ class CoronalModel:
         wlmap = cmfpy.io.WLfile2map(WL_fullpath,WL_date,WL_source)
 
 
-        score = wlmetric.compute_WL_score(self.nlmodel(),wlmap,method=method)
+        score = wlmetric.compute_WL_score(self.nlmap,wlmap,method=method)
         return score/100
     
     def plot_wlmetric(self, quiet:bool=True,method='Simple'):
@@ -398,7 +396,7 @@ class CoronalModel:
                                                 quiet=quiet)
 
         wlmap = cmfpy.io.WLfile2map(WL_fullpath,WL_date,WL_source)
-        nlmodel = self.nlmodel()
+        nlmodel = self.nlmap
         
         ### INPUT : sunpy.map.Map from a White Light Carrington Map
         ### OUTPUT : astropy.coordinates.SkyCoord describing the 
@@ -431,7 +429,7 @@ class CoronalModel:
 
     def nlmetric(self):
         observed_field_l1 = nlmetric.create_polarity_obs(self.datetime,"L1",return_br=True)
-        polarity_pred_l1 = nlmetric.create_polarity_model(self.nlmodel(),self.datetime_model,"L1",altitude=self.rss*u.R_sun)
+        polarity_pred_l1 = nlmetric.create_polarity_model(self.nlmap,self.datetime,"L1",altitude=self.rss*u.R_sun)
 
         ######################
         
@@ -443,9 +441,9 @@ class CoronalModel:
         return l1_nl_score
     
     def plot_nlmetric(self):
-        nlmodel = self.nlmodel()
+        nlmodel = self.nlmap
         observed_field_l1 = nlmetric.create_polarity_obs(self.datetime,"L1",return_br=True)
-        polarity_pred_l1 = nlmetric.create_polarity_model(nlmodel,self.datetime_model,"L1")
+        polarity_pred_l1 = nlmetric.create_polarity_model(nlmodel,self.datetime,"L1")
         
         ######################
 
@@ -469,7 +467,7 @@ class CoronalModel:
         
         
         carrington_trajectory_l1 = projection.create_carrington_trajectory(
-            polarity_pred_l1[0],"L1",obstime_ref=self.datetime_model
+            polarity_pred_l1[0],"L1",obstime_ref=self.datetime
             )
         trajectory_l1 = projection.ballistically_project(carrington_trajectory_l1,
                                                     r_inner=self.rss*u.R_sun) 

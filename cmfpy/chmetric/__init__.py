@@ -234,7 +234,6 @@ def do_ch_score(dt_model, chmap_model, chmap_obs,auto_interp=False) :
     if dimensions don't match. Once validation is complete, compute 
     precision, recall and f-score on the two binary maps.
     '''
-    chmap_model = utils.csv2map(chmap_model, dt_model)
     chmap_obs = sunpy.map.Map(chmap_obs)
     if auto_interp :
         chmap_obs = chmap_obs.reproject_to(chmap_model.wcs)
