@@ -10,6 +10,7 @@ import zipfile
 import requests
 import sunpy.map
 from sunpy.coordinates import get_earth
+import pyspedas
 
 def read_NL_SAM(NL_fullpath): 
     with open(NL_fullpath, newline='') as csvfile:
@@ -253,3 +254,37 @@ def get_WL_map_local(WL_date,WL_path,version="V1.1",quiet=True):
         return(WL_fullpath,WL_date_tmp)
     else:
         raise Exception('Local archive: sorry, no WL map available for input date: ' + WL_date.strftime('%Y-%m-%dT%H:%M:%S'))
+    
+def download_br_data(interval, body, path=None):
+    if path == None: os.environ.pop('SPEDAS_DATA_DIR',None)
+    else: os.environ['SPEDAS_DATA_DIR'] = path
+    dl_funcs_and_kwargs = {
+        "L1":(
+            # pyspedas.wind.mfi,
+            # {"varnames":"BGSE"}
+            pyspedas.omni.data,
+            {"varnames":"BX_GSE"}
+            ),
+        "solar orbiter":(
+            pyspedas.solo.mag,
+            {"datatype":"rtn-normal-1-minute"}
+            ),
+        "psp":(
+            pyspedas.psp.fields,
+            {"datatype":"mag_rtn_1min"}
+            ),
+        "stereo-a":(
+            pyspedas.stereo.mag,
+            {"probe":"a"}
+            #pyspedas.stereo.mag, #replace when pyspedas pr comes through
+            #{"probe":"a"}
+        ),
+        "stereo-b":(
+            pyspedas.stereo.mag,
+            {"probe":"b"}
+            #pyspedas.stereo.mag, #replace when pyspedas pr comes through
+            #{"probe":"b"}
+        )
+    }
+    dl_func,kwargs = dl_funcs_and_kwargs.get(body)
+    return dl_func(trange=interval,**kwargs,notplot=True)
