@@ -7,6 +7,7 @@ dependencies:
   - opencv
   - jupyter
   - matplotlib
+  - numba
   - numpy == 1.24.3
   - pathlib
   - pandas == 1.5.3
