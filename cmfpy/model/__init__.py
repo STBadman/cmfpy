@@ -267,7 +267,7 @@ class CoronalModel:
         self.chmap = utils.npy2map(self.chmap_path, self.datetime)
         self.nlmap = utils.npy2map(self.nlmap_path, self.datetime)
 
-    def chmetric(self, replace:bool=False, days_around:int=14, ezseg_version='python'):
+    def chmetric(self, replace:bool=False, days_around:int=14, ezseg_version='fortran'):
         euvmappath = chmetric.create_euv_map(self.datetime, 
                                                 days_around=days_around, replace=replace)
         euvmap = sunpy.map.Map(euvmappath)
@@ -302,7 +302,7 @@ class CoronalModel:
         thresh1, thresh2 = thresholds(euvmap)
 
         ch_for_path = chmetric.extract_obs_ch(euvmappath,
-                                        replace=replace,
+                                        replace=True,
                                         ezseg_version='fortran',
                                         ezseg_params={
                                             "thresh1":thresh1,#np.nanmax(euvmap.data.flatten())*0.07, ## Seed threshold
@@ -337,16 +337,16 @@ class CoronalModel:
         # the same resolution as the model result, which we also need for doing the
         # pixel by pixel classification )
 
-        ch_obs_cea = ch_obs_map.reproject_to(self.chmap_model.wcs)
+        ch_obs_cea = ch_obs_map.reproject_to(self.chmap.wcs)
         ch_combined = sunpy.map.Map(
-            ch_obs_cea.data+self.chmap_model.data,
-            self.chmap_model.meta
+            ch_obs_cea.data+self.chmap.data,
+            self.chmap.meta
         )
         ## Now we can plot this side by side with "observed" coronal holes and see
         ## how they compare
         fig = plt.figure()
         plt.imshow(ch_combined.data,cmap='inferno')
-        plt.title(f'chmetric {self.date}')
+        plt.title(f'chmetric {self.datetime}')
         plt.xlabel('Carrington Longitude')
         plt.ylabel('Latitude')
     
