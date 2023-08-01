@@ -10,6 +10,7 @@ compute precision, recall and f-score
 import astropy.units as u
 import datetime
 import cmfpy.chmetric.chmap as chmap
+import cmfpy.chmetric.aia as aia
 import os
 import numpy as np
 from pfsspy import utils as pfss_utils
@@ -55,7 +56,8 @@ def create_euv_map(center_date,
                    days_around = 14, # number of days plus/minus the center date to create the map
                    save_dir=os.path.join(f'{__path__[0]}','data'),
                    replace=False,
-                   wvln = 193*u.angstrom
+                   wvln = 193*u.angstrom,
+                   dl_method = "jsoc"
                    ) :
     '''
     Given `center_date`:`datetime.datetime` download a Carrington 
@@ -66,6 +68,7 @@ def create_euv_map(center_date,
     carrington longitude gaussian weighting to obtain a full sun EUV
     map. Save as fits file in `save_dir`:`str`
     '''
+    assert dl_method in ["Fido","jsoc"]
 
     ## First, check if map centered on center_date has already been created 
     ## if it has, jump straight to the end.
@@ -77,18 +80,33 @@ def create_euv_map(center_date,
         ### If the downloads succeed once, they are archived on your computer in
         ### ~/sunpy/data and a database entry is created. This step then becomes 
         ### much quicker on the next run.
-        sys.stdout.write(f"Searching for input EUV maps")
-        res=Fido.search(
-            a.Time(center_date-datetime.timedelta(days=days_around), 
-                center_date+datetime.timedelta(days=days_around)
-            ), 
-            a.Instrument.aia,
-            a.Wavelength(wvln), 
-            a.Sample(euv_obs_cadence)
-            )  
-        ## Download, or return files if already exist
-        downloaded_files = Fido.fetch(res)
-
+        if dl_method == "Fido" :
+            sys.stdout.write(f"Searching for input EUV maps (via FIDO)")
+            res=Fido.search(
+                a.Time(center_date-datetime.timedelta(days=days_around), 
+                    center_date+datetime.timedelta(days=days_around)
+                ), 
+                a.Instrument.aia,
+                a.Wavelength(wvln), 
+                a.Sample(euv_obs_cadence)
+                )  
+            ## Download, or return files if already exist
+            downloaded_files = Fido.fetch(res)
+        else : 
+            sys.stdout.write(f"Searching for input EUV maps (via JSOC)")
+            datetimes = utils.gen_dt_arr(
+                center_date - datetime.timedelta(days=days_around),
+                center_date + datetime.timedelta(days=days_around),
+                cadence_days=1
+            )
+            downloaded_files = []
+            for  dt in datetimes :
+                try:    
+                    file = aia.aia_start_of_day_map(dt,wvln)
+                    downloaded_files.append(file)
+                except RuntimeError as e : 
+                    sys.stdout.write(str(e)+"...skipping")
+            
         ## Read in downloaded data as `sunpy.map.Map` objects and downsample
         downsample_dims = [1024,1024] * u.pixel
         carrington_rotation = [sunpy.map.Map(m).resample(downsample_dims) 
