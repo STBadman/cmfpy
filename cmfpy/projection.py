@@ -122,7 +122,8 @@ def ballistically_project(skycoord,r_inner = 2.5*u.R_sun, vr_arr=None) :
     `r_inner` via a Parker spiral of the appropriate curvature. When `vr_arr`
     is not supplied, assumes wind speed is everywhere 360 km/s
     """
-    if vr_arr is None : vr_arr = np.ones(len(skycoord))*360*u.km/u.s
+    if vr_arr == None : 
+        vr_arr = np.ones(len(skycoord))*360*u.km/u.s
     lons_shifted = skycoord.lon + delta_long(skycoord.radius,
                                              r_inner=r_inner,
                                              vsw=vr_arr

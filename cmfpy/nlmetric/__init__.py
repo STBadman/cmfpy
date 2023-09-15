@@ -10,11 +10,12 @@ import datetime
 import numpy as np
 import cmfpy.utils as utils
 import cmfpy.projection as projection
-from cmfpy.io import download_br_data
+import cmfpy.io 
 import os
 
 from scipy.interpolate import interp1d
 import sunpy.coordinates
+import sunpy.map
 
 def determine_carrington_interval(center_date,body) :
     inst_body_position = projection.create_carrington_trajectory(
@@ -74,15 +75,15 @@ def create_polarity_obs(center_date,body,return_br,
         center_date,body
         )
     ### Change pyspedas directory to nlmetric/data
-    path=os.path.join(f"{__path__[0]}","data")
-    
-    data = download_br_data(carrington_interval, body, path=path)
-    
+
+    data = cmfpy.io.download_br_data(carrington_interval, body)
+
     if body == "L1" : 
         times_medians,br_medians = make_hourly_medians(
             data[list(data.keys())[0]]['x'],
             data[list(data.keys())[0]]['y'],
-        )    
+        )
+
         br_medians *= -1 # Convert GSE-X to RTN-R
     
     else :
@@ -101,8 +102,9 @@ def create_polarity_obs(center_date,body,return_br,
     if return_br :  return datetimes_hourly, br_hourly # Return br in nT
     else : return  datetimes_hourly,np.sign(br_hourly) # or return sign(br)
 
-def create_polarity_model(model_NL_map, center_date, body,
-                          altitude=2.5*u.R_sun,save_dir=os.path.join(".")
+def create_polarity_model(model_NL_map, center_date, body, 
+                          constant_vr=False, altitude=2.5*u.R_sun,save_dir=os.path.join(f"{__path__[0]}","data"),
+                          return_vr=False,
                           ):
     '''
     Given `model_NLmap` (modeled neutral line map user provided), 
@@ -121,21 +123,45 @@ def create_polarity_model(model_NL_map, center_date, body,
 
     carrington_interval = determine_carrington_interval(center_date,body)
 
-    datetimes_hourly = utils.gen_dt_arr(*carrington_interval,
-                                    cadence_days=1/24)
+    datetimes_hourly = utils.gen_dt_arr(*carrington_interval, cadence_days=1/24)
+
+    if constant_vr == True: vr_arr = None
+    else:
+        data = cmfpy.io.download_vr_data(carrington_interval, body)
+
+        if body == "L1" :
+            times_medians,vr_medians = make_hourly_medians(
+                data[list(data.keys())[0]]['x'],
+                data[list(data.keys())[0]]['y'],
+            )
+
+            vr_medians *= -1
+        else :
+            times_medians,vr_medians = make_hourly_medians(
+                data[list(data.keys())[0]]['x'],
+                data[list(data.keys())[0]]['y'][:,0],
+            )
+
+        nan_filt = np.where(~np.isnan(vr_medians))
+        vr_medians = vr_medians[nan_filt]
+        times_medians = times_medians[nan_filt]
+
+        vr_arr = interp1d(utils.datetime2unix(times_medians),
+                         vr_medians,
+                         bounds_error=False)(utils.datetime2unix(datetimes_hourly))*u.km/u.s
     
     carrington_trajectory = projection.create_carrington_trajectory(
         datetimes_hourly,body,obstime_ref=center_date
         )
     
     projected_trajectory = projection.ballistically_project(carrington_trajectory,
-                                                   r_inner=altitude)
+                                                   r_inner=altitude, vr_arr=vr_arr)
     
     polarity_modeled = sunpy.map.sample_at_coords(model_NL_map, 
                                                   projected_trajectory)
+    if return_vr: return (datetimes_hourly, polarity_modeled) , vr_arr
+    else: return datetimes_hourly, polarity_modeled
     
-    return datetimes_hourly, polarity_modeled
-
 def compute_NL_metric(model_tseries,obs_tseries) :
     '''
     Given `model_tseries` and `obs_tseries`, ensure the timestamps are
