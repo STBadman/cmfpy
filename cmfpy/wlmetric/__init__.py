@@ -11,8 +11,7 @@ import numpy as np
 import os
 from scipy.ndimage import gaussian_filter1d
 import cv2
-from astropy.convolution import Gaussian2DKernel
-from astropy.convolution import interpolate_replace_nans, convolve
+from astropy.convolution import Gaussian2DKernel, interpolate_replace_nans, convolve
 from scipy.signal import find_peaks
 import cmfpy.utils as utils
 
@@ -275,3 +274,4 @@ def eval_WL_score(min_separation_normed) :
     score = 100*score; #output in % (100% is a perfect model, 0% is the worst)
 
     return score
+
