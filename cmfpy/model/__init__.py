@@ -15,6 +15,7 @@ import numpy as np
 
 import pfsspy
 import sunpy.map
+from astropy.convolution import Gaussian2DKernel, Tophat2DKernel, interpolate_replace_nans, convolve
 import astropy.coordinates
 import astropy.units as u
 from scipy.signal import find_peaks
@@ -140,34 +141,34 @@ def pfss(date:str,
 
     magname = get_magneto(date,delim,return_name=True)
 
+    ss_name = f'ss_{rss}_{magname[6:18]}.npy'
     ofl_name = f'ofl_{rss}_{magname[6:18]}.npy'
-    nl_name = f'nl_{rss}_{magname[6:18]}.npy'
+    exp_name = f'exp_{rss}_{magname[6:18]}.npy'
 
-    if not os.path.exists(f'{outdir}/{ofl_name}') or not os.path.exists(f'{outdir}/{nl_name}'):
+    if not os.path.exists(f'{outdir}/{ss_name}') or not os.path.exists(f'{outdir}/{ofl_name}') or not os.path.exists(f'{outdir}/{exp_name}'):
 
         pfss_model = adapt2pfsspy(f'{datadir}/{magname}',rss=rss)
         ss_model = pfss_model.source_surface_br
 
-        ss = ss_model.data
+        ssmap = ss_model.data
 
-        nlmap = np.where(ss > 0, 1, ss)
-        nlmap = np.where(ss < 0, -1, nlmap)
+        flines_highres = pfss2flines(pfss_model,nth=180,nph=360)    
+        oflmap = flines_highres.polarities.reshape([180,360])
 
-        flines_highres = pfss2flines(pfss_model,nth=180,nph=360)
-        topologies = flines_highres.polarities.reshape([180,360])
+        flines_ss_highres = pfss2flines(pfss_model,nth=180,nph=360,trace_from_SS=True)
+        expmap = flines_ss_highres.expansion_factors.reshape([180,360])
+        expmap = interpolate_replace_nans(expmap, Tophat2DKernel(1), convolve=convolve, boundary='extend')
 
-
-        oflmap = np.abs(topologies)
-
-
+        ss_out = parse_map(ssmap)
         ofl_out = parse_map(oflmap)
-        nl_out = parse_map(nlmap)
+        exp_out = parse_map(expmap)
 
-
+        np.save(f'{outdir}/{ss_name}', ss_out, allow_pickle=True)
         np.save(f'{outdir}/{ofl_name}', ofl_out, allow_pickle=True)
-        np.save(f'{outdir}/{nl_name}', nl_out, allow_pickle=True)
+        np.save(f'{outdir}/{exp_name}', exp_out, allow_pickle=True)
+        
 
-    if return_name: return ofl_name, nl_name, rss
+    if return_name: return ofl_name, ss_name, rss
 
 def thresholds(euvmap:sunpy.map.mapbase.GenericMap):
     N=20
@@ -176,9 +177,12 @@ def thresholds(euvmap:sunpy.map.mapbase.GenericMap):
     logdata_hist, edges = np.histogram(logdata,bins=N)
     peaks, _ = find_peaks(logdata_hist)
     try:
-        thresh1 = (edges[peaks[0]] + edges[peaks[1]])/2
-        thresh1 = (thresh1 + edges[peaks[1]])/2
+        thresh1 = (0.25*edges[peaks[0]] + 0.75*edges[peaks[1]])/2
     except: thresh1 = edges[peaks[0]]*0.9
+
+    plt.figure()
+    plt.hist(logdata,bins=N)
+    print(thresh1,2*thresh1)
     return thresh1, 2*thresh1
 
 def find_close_magneto_date(date:str,
@@ -230,28 +234,28 @@ def model(date:str,
 
     if modeltype == 'PFSS':
         modeldate = find_close_magneto_date(date,delim=delim,days_around=days_around)
-        oflname, nlname, rss = pfss(modeldate,delim=delim,return_name=True,**modelkwargs)
+        ofl_name, ss_name, rss = pfss(modeldate,delim=delim,return_name=True,**modelkwargs)
         modelkwargs['rss'] = rss
 
     else: raise NameError(f"Model '{modeltype}' is not implemented")
 
     datetime_model = utils.parse_to_datetime(modeldate)
 
-    chmap_path = f'{__path__[0]}/out/{oflname}'
-    nlmap_path = f'{__path__[0]}/out/{nlname}'
+    oflmap_path = f'{__path__[0]}/out/{ofl_name}'
+    ssmap_path = f'{__path__[0]}/out/{ss_name}'
 
     return CoronalModel(modeltype=modeltype,
                         datetime=datetime_model,
-                        chmap_path=chmap_path,
-                        nlmap_path=nlmap_path,
+                        oflmap_path=oflmap_path,
+                        ssmap_path=ssmap_path,
                         modelkwargs=modelkwargs)
 
 class CoronalModel:
     def __init__(self,
                  modeltype:str,
                  datetime:datetime.datetime,
-                 chmap_path:str,
-                 nlmap_path:str,
+                 oflmap_path:str,
+                 ssmap_path:str,
                  modelkwargs):
         utils.type_check(locals(),CoronalModel.__init__)
         
@@ -261,11 +265,18 @@ class CoronalModel:
 
         self.datetime = datetime
 
-        self.chmap_path = chmap_path
-        self.nlmap_path = nlmap_path
+        self.oflmap_path = oflmap_path
+        self.ssmap_path = ssmap_path
 
-        self.chmap = utils.npy2map(self.chmap_path, self.datetime)
-        self.nlmap = utils.npy2map(self.nlmap_path, self.datetime)
+        self.oflmap = utils.npy2map(self.oflmap_path, self.datetime)
+        self.ssmap = utils.npy2map(self.ssmap_path, self.datetime)
+
+    def chmap(self): return sunpy.map.Map(np.abs(self.oflmap.data), self.oflmap.meta)
+
+    def nlmap(self):
+        nlmap = np.where(self.ssmap.data < 0, -1, self.ssmap.data)
+        nlmap[np.where(nlmap > 0)] = 1
+        return sunpy.map.Map(nlmap, self.ssmap.meta)
 
     def chmetric(self, replace:bool=False, days_around:int=14, ezseg_version='fortran'):
         euvmappath = chmetric.create_euv_map(self.datetime, 
@@ -285,9 +296,9 @@ class CoronalModel:
                                                     "iters":100   
                                                 }
                                             )
-
+        
         p,r,f = chmetric.do_ch_score(self.datetime,
-                                self.chmap,
+                                self.chmap(),
                                 ch_obs_path,
                                 auto_interp=True)
 
@@ -316,15 +327,17 @@ class CoronalModel:
         lognorm = mpl.colors.LogNorm(vmin=np.nanpercentile(euvmap.data.flatten(),5), 
                                 vmax=np.nanpercentile(euvmap.data.flatten(),99.9))
 
-        fig = plt.figure(figsize=(10,5))
-        ax = fig.add_subplot(projection=euvmap.wcs)
+        fig1 = plt.figure(figsize=(10,5))
+        ax1 = fig1.add_subplot(projection=euvmap.wcs)
         euvmap.plot(cmap="sdoaia193",
                     norm=lognorm,
-                    axes=ax
+                    axes=ax1
                 )
-        ch_for_map.draw_contours(levels=[.5,], colors=["white"], axes=ax)
+        ch_for_map.draw_contours(levels=[.5,], colors=["white"], axes=ax1)
 
-        ax.set_title("Fortran/CHMAP EZSEG CHD: " + euvmap.meta['date-obs'][:-13]);
+        ax1.set_title("Fortran/CHMAP EZSEG CHD: " + euvmap.meta['date-obs'][:-13]);
+        plt.close()
+
 
         ### We have some sample coronal hole and neutral line maps in the folder:
         # ./example_model_data/
@@ -336,19 +349,24 @@ class CoronalModel:
         # by using the sunpy reprojection api (this also will interpolate the map to 
         # the same resolution as the model result, which we also need for doing the
         # pixel by pixel classification )
+        chmap = self.chmap()
 
-        ch_obs_cea = ch_obs_map.reproject_to(self.chmap.wcs)
+        ch_obs_cea = ch_obs_map.reproject_to(chmap.wcs)
         ch_combined = sunpy.map.Map(
-            ch_obs_cea.data+self.chmap.data,
-            self.chmap.meta
+            ch_obs_cea.data+chmap.data,
+            chmap.meta
         )
         ## Now we can plot this side by side with "observed" coronal holes and see
         ## how they compare
-        fig = plt.figure()
-        plt.imshow(ch_combined.data,cmap='inferno')
-        plt.title(f'chmetric {self.datetime}')
-        plt.xlabel('Carrington Longitude')
-        plt.ylabel('Latitude')
+        fig2 = plt.figure(figsize=(10,5))
+        ax2 = fig2.add_subplot(projection=ch_combined.wcs)
+        ch_combined.plot(cmap="inferno",
+                    axes=ax2
+                )
+        ax2.set_title(f'CHmetric: {ch_combined.meta["date-obs"][:-13]}')
+        plt.close()
+
+        return fig1, fig2
     
     def wlmetric(self, quiet:bool=True, method:str='Simple'):
         from importlib import reload;reload(cmfpy.io)
@@ -371,9 +389,29 @@ class CoronalModel:
 
         wlmap = cmfpy.io.WLfile2map(WL_fullpath,WL_date,WL_source)
 
+        wlmap_norm = wlmetric.clean(wlmap.data)
+        wlmap_norm[np.where(np.isnan(wlmap.data))] = np.nan
+        wlmap_norm -= np.nanmin(wlmap_norm)
+        wlmap_norm /= np.nanmax(wlmap_norm)
+        wlmap_norm = sunpy.map.Map(wlmap_norm,wlmap.meta).reproject_to(self.ssmap.wcs).data
 
-        score = wlmetric.compute_WL_score(self.nlmap,wlmap,method=method)
-        return score/100
+
+        ssmap_norm = np.abs(self.ssmap.data)
+        ssmap_norm -= np.max(ssmap_norm)
+        ssmap_norm /= np.min(ssmap_norm)
+        ssmap_norm = ssmap_norm**3
+
+
+        score = 1 - (np.nanmean((wlmap_norm-ssmap_norm)**2))**0.5
+
+        plt.figure()
+        plt.imshow(wlmap_norm)
+        plt.figure()
+        plt.imshow(ssmap_norm)
+        plt.figure()
+        plt.scatter(ssmap_norm.flatten(),wlmap_norm.flatten(),s=0.5)
+        plt.plot(np.sort(ssmap_norm.flatten()),np.sort(ssmap_norm.flatten()),c='r')
+        return score
     
     def plot_wlmetric(self, quiet:bool=True,method='Simple'):
         from importlib import reload;reload(cmfpy.io)
@@ -396,7 +434,8 @@ class CoronalModel:
                                                 quiet=quiet)
 
         wlmap = cmfpy.io.WLfile2map(WL_fullpath,WL_date,WL_source)
-        nlmodel = self.nlmap
+
+        nlmap = self.nlmap()
         
         ### INPUT : sunpy.map.Map from a White Light Carrington Map
         ### OUTPUT : astropy.coordinates.SkyCoord describing the 
@@ -407,29 +446,32 @@ class CoronalModel:
         ### As with the chmetric, the observed map is in constant latitude 
         # binning. For a fair comparison, we reproject to sine(latitude)
         # (CEA) binning.
-        wl_obs_cea = wlmap.reproject_to(nlmodel.wcs)
+        wl_obs_cea = wlmap.reproject_to(nlmap.wcs)
 
         ## Now we can plot the model and observations side by side
-        fig = plt.figure(figsize=(20,5))
-        axmodel = fig.add_subplot(131,projection=nlmodel.wcs) 
-        axobs = fig.add_subplot(132,projection=wl_obs_cea.wcs)
-        axcomp = fig.add_subplot(133,projection=nlmodel.wcs)
+        fig = plt.figure(figsize=(10,5))
+        axcomp = fig.add_subplot(projection=nlmap.wcs)
 
-        nlmodel.plot(cmap="coolwarm",axes=axmodel)
-        nlmodel.draw_contours(levels=[0],colors=["black"],axes=axmodel)
-        wl_obs_cea.plot(cmap="Greys_r",axes=axobs)
-        axobs.plot_coord(smb,"o",color="gold",ms=1)
-        nlmodel.plot(cmap="coolwarm",axes=axcomp,vmin=-1.5,vmax=1.5)
-        nlmodel.draw_contours(levels=[0],colors=["black"],axes=axcomp,label="Model")
+        nlmap.plot(cmap="coolwarm",axes=axcomp,vmin=-1.5,vmax=1.5)
+        nlmap.draw_contours(levels=[0],colors=["black"],axes=axcomp,label="Model")
         axcomp.plot_coord(smb,"o",color="gold",ms=1,label="Observed")
+        axcomp.set_title("WLmetric Comparison")
 
-        axmodel.set_title("Modeled Neutral Line")
-        axobs.set_title("Observed Streamer Belt")
-        axcomp.set_title("Comparison")
 
-    def nlmetric(self):
+        '''fig = plt.figure(figsize=(10,5))
+        axcomp = fig.add_subplot(projection=wlmap.wcs)
+
+        wlmap.plot(axes=axcomp,cmap='Greys_r')
+        axcomp.set_title("White Light")'''
+
+
+        plt.close()
+
+        return fig
+
+    def nlmetric(self,constant_vr=False):
         observed_field_l1 = nlmetric.create_polarity_obs(self.datetime,"L1",return_br=True)
-        polarity_pred_l1 = nlmetric.create_polarity_model(self.nlmap,self.datetime,"L1",altitude=self.rss*u.R_sun)
+        polarity_pred_l1 = nlmetric.create_polarity_model(self.nlmap(),self.datetime,"L1",altitude=self.rss*u.R_sun,constant_vr=constant_vr)
 
         ######################
         
@@ -440,29 +482,15 @@ class CoronalModel:
 
         return l1_nl_score
     
-    def plot_nlmetric(self):
-        nlmodel = self.nlmap
+    def plot_nlmetric(self,constant_vr=False):
+        nlmodel = self.nlmap()
         observed_field_l1 = nlmetric.create_polarity_obs(self.datetime,"L1",return_br=True)
-        polarity_pred_l1 = nlmetric.create_polarity_model(nlmodel,self.datetime,"L1")
+        polarity_pred_l1, vr_arr = nlmetric.create_polarity_model(nlmodel,self.datetime,"L1",altitude=self.rss*u.R_sun,constant_vr=constant_vr,
+                                                          return_vr=True)
         
         ######################
 
         ## Now we have produced predicted and measured polarity timeseries, so we can visualize the comparison.
-
-        ## First, directly by looking at the timeseries
-        fig,axes = plt.subplots(figsize=(12,4),ncols=2)
-
-        axes[0].plot(*polarity_pred_l1,color="black",linewidth=2,label="Predicted")
-        axes[0].plot(observed_field_l1[0],np.sign(observed_field_l1[1]),color="red",label="Observed")
-        axes[0].set_title("L1/Wind");axes[1].set_ylabel("Magnetic Polarity")
-
-        for ax in axes: 
-            ax.legend()
-            ax.set_ylabel("Magnetic Polarity")
-            ax.set_yticks([-1,1])
-
-        ## Second, plot in an easier way to view/understand using the map and the trajectories
-
         # We first need to use some of the helpers to create the trajectories
         
         
@@ -470,10 +498,10 @@ class CoronalModel:
             polarity_pred_l1[0],"L1",obstime_ref=self.datetime
             )
         trajectory_l1 = projection.ballistically_project(carrington_trajectory_l1,
-                                                    r_inner=self.rss*u.R_sun) 
+                                                    r_inner=self.rss*u.R_sun,vr_arr=vr_arr) 
 
 
-        fig=plt.figure(figsize=(12,6))
+        fig=plt.figure(figsize=(10,5))
         ax = fig.add_subplot(projection=nlmodel.wcs)
         nlmodel.plot(cmap="coolwarm",vmin=-2,vmax=2)
 
@@ -482,3 +510,16 @@ class CoronalModel:
                 nlmodel.world_to_pixel(trajectory_l1).y,
                 c=plt.cm.bwr(observed_field_l1[1]),s=2
                 )
+        plt.close()
+
+
+        '''fig,axes = plt.subplots(figsize=(10,5))
+
+        axes.plot(observed_field_l1[0],np.sign(observed_field_l1[1]),color="red",label="Observed")
+        axes.set_title("L1/Wind")
+
+        for ax in [axes]: 
+            ax.set_ylabel("Magnetic Polarity")
+            ax.set_yticks([-1,1])'''
+
+        return fig
