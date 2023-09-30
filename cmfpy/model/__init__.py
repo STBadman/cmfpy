@@ -179,12 +179,9 @@ def thresholds(euvmap:sunpy.map.mapbase.GenericMap):
     logdata_hist, edges = np.histogram(logdata,bins=N)
     peaks, _ = find_peaks(logdata_hist)
     try:
-        thresh1 = (0.25*edges[peaks[0]] + 0.75*edges[peaks[1]])/2
-    except: thresh1 = edges[peaks[0]]*0.9
+        thresh1 = (0.6*edges[peaks[1]] + 0.4*np.min(logdata))
+    except: thresh1 = (0.6*edges[peaks[0]] + 0.4*np.min(logdata))
 
-    plt.figure()
-    plt.hist(logdata,bins=N)
-    print(thresh1,2*thresh1)
     return thresh1, 2*thresh1
 
 def find_close_magneto_date(date:str,
