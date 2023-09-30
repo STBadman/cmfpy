@@ -15,11 +15,12 @@ import numpy as np
 
 import pfsspy
 import sunpy.map
-from astropy.convolution import Gaussian2DKernel, Tophat2DKernel, interpolate_replace_nans, convolve
+from astropy.convolution import Tophat2DKernel, interpolate_replace_nans, convolve
 import astropy.coordinates
 import astropy.units as u
 from scipy.signal import find_peaks
 import datetime
+
 __cachepath__ = f'{__path__[0]}/__cache__'
 if not os.path.exists(__cachepath__): os.makedirs(__cachepath__)
 
@@ -170,7 +171,7 @@ def pfss(date:str,
         np.save(f'{outdir}/{exp_name}', exp_out, allow_pickle=True)
         
 
-    if return_name: return ofl_name, ss_name, rss
+    if return_name: return exp_name, ofl_name, ss_name, rss
 
 def thresholds(euvmap:sunpy.map.mapbase.GenericMap):
     N=20
@@ -233,18 +234,21 @@ def model(date:str,
 
     if modeltype == 'PFSS':
         modeldate = find_close_magneto_date(date,delim=delim,days_around=days_around)
-        ofl_name, ss_name, rss = pfss(modeldate,delim=delim,return_name=True,**modelkwargs)
+
+        exp_name, ofl_name, ss_name, rss = pfss(modeldate,delim=delim,return_name=True,**modelkwargs)
         modelkwargs['rss'] = rss
 
     else: raise NameError(f"Model '{modeltype}' is not implemented")
 
     datetime_model = utils.parse_to_datetime(modeldate)
 
+    expmap_path = f'{__path__[0]}/out/{exp_name}'
     oflmap_path = f'{__path__[0]}/out/{ofl_name}'
     ssmap_path = f'{__path__[0]}/out/{ss_name}'
 
     return CoronalModel(modeltype=modeltype,
                         datetime=datetime_model,
+                        expmap_path=expmap_path,
                         oflmap_path=oflmap_path,
                         ssmap_path=ssmap_path,
                         modelkwargs=modelkwargs)
@@ -253,6 +257,7 @@ class CoronalModel:
     def __init__(self,
                  modeltype:str,
                  datetime:datetime.datetime,
+                 expmap_path:str,
                  oflmap_path:str,
                  ssmap_path:str,
                  modelkwargs):
@@ -264,9 +269,11 @@ class CoronalModel:
 
         self.datetime = datetime
 
+        self.expmap_path = expmap_path
         self.oflmap_path = oflmap_path
         self.ssmap_path = ssmap_path
 
+        self.expmap = utils.npy2map(self.expmap_path, self.datetime)
         self.oflmap = utils.npy2map(self.oflmap_path, self.datetime)
         self.ssmap = utils.npy2map(self.ssmap_path, self.datetime)
 
@@ -367,7 +374,7 @@ class CoronalModel:
 
         return fig1, fig2
     
-    def wlmetric(self, quiet:bool=True, method:str='Simple'):
+    def wlmetric(self, quiet:bool=True, method:str='Advanced', full:bool=False):
         from importlib import reload;reload(cmfpy.io)
         #### Capability to create locally pending
 
@@ -376,95 +383,57 @@ class CoronalModel:
         ### Either download from online source (2020.4.27-2023) or download local 
         # Load location is determined by input date.
 
-        WL_date = self.datetime
-        WL_path = f"{wlmetric.__path__[0]}/data"
-        if self.datetime < datetime.datetime(2020,4,27): WL_source = 'V3'
-        else: WL_source = 'connect_tool'
-
-        [WL_fullpath,WL_date] = cmfpy.io.get_WL_map(WL_date,
-                                                WL_path,
-                                                WL_source,
-                                                quiet=quiet)
-
-        wlmap = cmfpy.io.WLfile2map(WL_fullpath,WL_date,WL_source)
-
-        wlmap_norm = wlmetric.clean(wlmap.data)
-        wlmap_norm[np.where(np.isnan(wlmap.data))] = np.nan
-        wlmap_norm -= np.nanmin(wlmap_norm)
-        wlmap_norm /= np.nanmax(wlmap_norm)
-        wlmap_norm = sunpy.map.Map(wlmap_norm,wlmap.meta).reproject_to(self.ssmap.wcs).data
-
-
-        ssmap_norm = np.abs(self.ssmap.data)
-        ssmap_norm -= np.max(ssmap_norm)
-        ssmap_norm /= np.min(ssmap_norm)
-        ssmap_norm = ssmap_norm**3
-
-
-        score = 1 - (np.nanmean((wlmap_norm-ssmap_norm)**2))**0.5
-
-        plt.figure()
-        plt.imshow(wlmap_norm)
-        plt.figure()
-        plt.imshow(ssmap_norm)
-        plt.figure()
-        plt.scatter(ssmap_norm.flatten(),wlmap_norm.flatten(),s=0.5)
-        plt.plot(np.sort(ssmap_norm.flatten()),np.sort(ssmap_norm.flatten()),c='r')
-        return score
+        path = f"{wlmetric.__path__[0]}/data"
+        wlmap = wlmetric.create_wl_map(self.datetime,path,coronagraph_altitude=self.rss,quiet=quiet)
+        
+        if method=='Advanced': return wlmetric.compute_WL_score(self.expmap,wlmap,method='Advanced')
+        if method=='Simple': return wlmetric.compute_WL_score(self.nlmap(),wlmap,method='Simple')    
     
-    def plot_wlmetric(self, quiet:bool=True,method='Simple'):
-        from importlib import reload;reload(cmfpy.io)
-        #### Capability to create locally pending
-
-        #### Load Precomputed Ones
-
-        ### Either download from online source (2020.4.27-2023) or download local 
-        # Load location is determined by input date.
-
-        WL_date = self.datetime
-
-        WL_path = f"{wlmetric.__path__[0]}/data"
-        if self.datetime < datetime.datetime(2020,4,27): WL_source = 'V3'
-        else: WL_source = 'connect_tool'
+    def plot_wlmetric(self,method:str='Advanced'):
+        path = f"{wlmetric.__path__[0]}/data"
+        wlmap = wlmetric.create_wl_map(self.datetime,path,coronagraph_altitude=self.rss)
         
-        [WL_fullpath,WL_date] = cmfpy.io.get_WL_map(WL_date,
-                                                WL_path,
-                                                WL_source,
-                                                quiet=quiet)
+        if method == 'Advanced':
+            wlmap_clean = wlmetric.clean(wlmap.data)
+            wlmap_clean = sunpy.map.Map(wlmap_clean,wlmap.meta).reproject_to(self.expmap.wcs).data
 
-        wlmap = cmfpy.io.WLfile2map(WL_fullpath,WL_date,WL_source)
+            model_bool = np.where(self.expmap.data>np.nanmedian(self.expmap.data),1,0)      
+            obs_bool = np.where(wlmap_clean>np.nanmedian(wlmap_clean),1,0)
 
-        nlmap = self.nlmap()
+            diffmap = sunpy.map.Map(model_bool+obs_bool,self.expmap.meta)
+            
+            ## Now we can plot the model and observations side by side
+            fig = plt.figure(figsize=(10,5))
+            ax = fig.add_subplot(projection=diffmap.wcs)
+
+            diffmap.plot(cmap="inferno",axes=ax,vmin=0,vmax=2)
+            ax.set_title(f'WLmetric-Advanced: {diffmap.meta["date-obs"][:-13]}')
+
+            plt.close()
+
+        if method == 'Simple':
+            nlmap = self.nlmap()
         
-        ### INPUT : sunpy.map.Map from a White Light Carrington Map
-        ### OUTPUT : astropy.coordinates.SkyCoord describing the 
-        # location of maximum brightness in the image at each longitude
-        smb, _ = wlmetric.extract_SMB(wlmap,method=method)
+            ### INPUT : sunpy.map.Map from a White Light Carrington Map
+            ### OUTPUT : astropy.coordinates.SkyCoord describing the 
+            # location of maximum brightness in the image at each longitude
+            smb, _ = wlmetric.extract_SMB(wlmap)
 
+            ### As with the chmetric, the observed map is in constant latitude 
+            # binning. For a fair comparison, we reproject to sine(latitude)
+            # (CEA) binning.
+            wl_obs_cea = wlmap.reproject_to(nlmap.wcs)
 
-        ### As with the chmetric, the observed map is in constant latitude 
-        # binning. For a fair comparison, we reproject to sine(latitude)
-        # (CEA) binning.
-        wl_obs_cea = wlmap.reproject_to(nlmap.wcs)
+            ## Now we can plot the model and observations side by side
+            fig = plt.figure(figsize=(10,5))
+            axcomp = fig.add_subplot(projection=nlmap.wcs)
 
-        ## Now we can plot the model and observations side by side
-        fig = plt.figure(figsize=(10,5))
-        axcomp = fig.add_subplot(projection=nlmap.wcs)
+            nlmap.plot(cmap="coolwarm",axes=axcomp,vmin=-1.5,vmax=1.5)
+            nlmap.draw_contours(levels=[0],colors=["black"],axes=axcomp,label="Model")
+            axcomp.plot_coord(smb,"o",color="gold",ms=1,label="Observed")
+            axcomp.set_title(f'WLmetric-Simple: {wlmap.meta["date-obs"][:-13]}')
 
-        nlmap.plot(cmap="coolwarm",axes=axcomp,vmin=-1.5,vmax=1.5)
-        nlmap.draw_contours(levels=[0],colors=["black"],axes=axcomp,label="Model")
-        axcomp.plot_coord(smb,"o",color="gold",ms=1,label="Observed")
-        axcomp.set_title("WLmetric Comparison")
-
-
-        '''fig = plt.figure(figsize=(10,5))
-        axcomp = fig.add_subplot(projection=wlmap.wcs)
-
-        wlmap.plot(axes=axcomp,cmap='Greys_r')
-        axcomp.set_title("White Light")'''
-
-
-        plt.close()
+            plt.close()
 
         return fig
 
@@ -510,15 +479,5 @@ class CoronalModel:
                 c=plt.cm.bwr(observed_field_l1[1]),s=2
                 )
         plt.close()
-
-
-        '''fig,axes = plt.subplots(figsize=(10,5))
-
-        axes.plot(observed_field_l1[0],np.sign(observed_field_l1[1]),color="red",label="Observed")
-        axes.set_title("L1/Wind")
-
-        for ax in [axes]: 
-            ax.set_ylabel("Magnetic Polarity")
-            ax.set_yticks([-1,1])'''
 
         return fig

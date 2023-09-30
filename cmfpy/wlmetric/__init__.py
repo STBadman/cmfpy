@@ -14,22 +14,14 @@ import cv2
 from astropy.convolution import Gaussian2DKernel, interpolate_replace_nans, convolve
 from scipy.signal import find_peaks
 import cmfpy.utils as utils
+import cmfpy.io
+from sunpy.map import Map
+import datetime
 
 #Score functions definitions
 def sigmoid(x,a,b):
     y = 1/(1+np.exp(-b*(x+a)));
     return(y)
-
-def create_WL_map(center_date, coronagraph_altitude=3*u.R_sun) :
-    '''
-    *** TO BE IMPLEMENTED ***
-    Given `center_date`:`datetime.datetime`, download SOHO/LASCO
-    coronagraph images for one Carrington rotation centered on that
-    date, extract white light intensity above the limbs at the 
-    specified altitude, and assemble into a Carrington map. Save as
-    fits file.
-    '''
-    pass
 
 def extract_edge_coords(wl_map) :
 
@@ -112,14 +104,14 @@ def clean(wldata:np.ndarray|list, width=(1,10)):
     wldata = interpolate_replace_nans(wldata, Gaussian2DKernel(5), convolve=convolve, boundary='extend')
 
     # apply a weighted blur
-    blur = convolve(wldata, Gaussian2DKernel(20), boundary='extend')
+    blur = convolve(wldata, Gaussian2DKernel(1), boundary='extend')
     blur_weight = wldata - np.min(wldata); blur_weight = 1-blur_weight/np.max(wldata)
     cleaned = (1-blur_weight)*wldata + blur_weight*blur
 
-    return cleaned
+    return wldata
 
 def extract_SMB(wl_map,smoothing_factor=20,
-                save_dir=os.path.join(f"{__path__[0]}","data"),method='Simple'
+                save_dir=os.path.join(f"{__path__[0]}","data")
                 ):
     '''
     Given a precomputed input White light carrington map (`wl_map`),
@@ -128,46 +120,27 @@ def extract_SMB(wl_map,smoothing_factor=20,
     Poirier+2021, Badman+2022). Save in `save_dir` 
     '''
     WL_pphi_edges,WL_tth_edges,WL_I_edges = extract_edge_coords(wl_map)
-    
-    if method=='Simple':
-        #Find maximal brightness for each longitude
-        idx_max = np.nanargmax(WL_I_edges,axis=0)
 
-        #Fetch coordinates of these maxima
-        SMB_phi_edges = WL_pphi_edges[0,:].flatten()
-        SMB_th_edges = WL_tth_edges[idx_max,0].flatten()
+    #Find maximal brightness for each longitude
+    idx_max = np.nanargmax(WL_I_edges,axis=0)
 
-        #Before smoothing the curve, repeat data at each side
-        n_extend = int(smoothing_factor/2)+1;
-        SMB_th_extended = np.concatenate((SMB_th_edges[-1-(n_extend-1):-1],
-                                        SMB_th_edges,
-                                        SMB_th_edges[1:n_extend-1]),axis=0);
+    #Fetch coordinates of these maxima
+    SMB_phi_edges = WL_pphi_edges[0,:].flatten()
+    SMB_th_edges = WL_tth_edges[idx_max,0].flatten()
 
-        #Smooth the SMB line
-        SMB_th_extended = gaussian_filter1d(SMB_th_extended,smoothing_factor)
+    #Before smoothing the curve, repeat data at each side
+    n_extend = int(smoothing_factor/2)+1;
+    SMB_th_extended = np.concatenate((SMB_th_edges[-1-(n_extend-1):-1],
+                                    SMB_th_edges,
+                                    SMB_th_edges[1:n_extend-1]),axis=0);
 
-        #Shrink back to initial range
-        SMB_th_edges = SMB_th_extended[(n_extend-1):-(n_extend-1)+1];
-    
-        thickness = 5
-    
-    if method=='Advanced':
-        #Clean the wl map
-        wldata = clean(wl_map.data)
+    #Smooth the SMB line
+    SMB_th_extended = gaussian_filter1d(SMB_th_extended,smoothing_factor)
 
-        #Locate streamer belts
-        thresh = np.nanmin(wldata) + 0.9*np.nanstd(wldata)
-        streamers = np.where(wldata>thresh,1,0).astype('uint8')
+    #Shrink back to initial range
+    SMB_th_edges = SMB_th_extended[(n_extend-1):-(n_extend-1)+1];
 
-        #Find center of the streamer belts
-        streamers = cv2.morphologyEx(streamers, cv2.MORPH_OPEN, np.ones((5,5), np.uint8))
-        args, thickness = where_streamers(streamers)
-
-        WL_pphi_edges,WL_tth_edges,WL_I_edges = extract_edge_coords(wl_map)
-        
-        #Get spherical coordinates
-        SMB_phi_edges = WL_pphi_edges[args].flatten()
-        SMB_th_edges = WL_tth_edges[args].flatten()
+    thickness = 5
          
     return SkyCoord(lon=SMB_phi_edges*u.deg,
                     lat=SMB_th_edges*u.deg,
@@ -200,9 +173,9 @@ def compute_min_dist(phi1,th1,phi2,th2):
 
     return(sigma_min.to("deg"),idx_min)
 
-def compute_WL_score(model_nl_map,obs_wl_map,method='Simple') :
+def compute_WL_score(model_map,obs_wl_map,method='Simple') :
     '''
-    Given `model_nl_map` (user provided) and a precomputed `smb_obs`
+    Given `model_map` (user provided) and a precomputed `smb_obs`
     dataset describing the coronagraph-observed neutral line, extract
     the 1d model neutral line, and apply the Poirier+ method to compute
     the average angular distance between the two 1d curves weighted by
@@ -210,34 +183,55 @@ def compute_WL_score(model_nl_map,obs_wl_map,method='Simple') :
     '''
     #norm_mode_all = ["fixed","SB_thickness"]
  
-    ### Extract two curves to compare
-    nl_lon, nl_lat = [], []
-    for cnt in model_nl_map.contour([0]):
-        nl_lon = np.hstack( (nl_lon, cnt.lon.value) )
-        nl_lat = np.hstack( (nl_lat, cnt.lat.value) )
+    if method == 'Simple':
+        nlmap = model_map
+        ### Extract two curves to compare
+        nl_lon, nl_lat = [], []
+        for cnt in nlmap.contour([0]):
+            nl_lon = np.hstack( (nl_lon, cnt.lon.value) )
+            nl_lat = np.hstack( (nl_lat, cnt.lat.value) )
 
-    smb_obs, norm_val = extract_SMB(obs_wl_map,method=method)
-    smb_lon,smb_lat = smb_obs.lon.value,smb_obs.lat.value
+        smb_obs, norm_val = extract_SMB(obs_wl_map)
+        smb_lon,smb_lat = smb_obs.lon.value,smb_obs.lat.value
 
-    ### Find the closest pair of points on each curve and compute the angular distance
-    phi2 = np.tile(nl_lon[:,np.newaxis],(1,np.size(smb_lon,0)))*u.deg
-    th2 = np.tile(nl_lat[:,np.newaxis],(1,np.size(smb_lon,0)))*u.deg
-    phi1 = np.tile(smb_lon[:,np.newaxis].T,(np.size(nl_lon,0),1))*u.deg
-    th1 = np.tile(smb_lat[:,np.newaxis].T,(np.size(nl_lon,0),1))*u.deg
-    [min_separation,idx_min] = compute_min_dist(phi1,th1,phi2,th2) 
-    #return sigma_min
+        ### Find the closest pair of points on each curve and compute the angular distance
+        phi2 = np.tile(nl_lon[:,np.newaxis],(1,np.size(smb_lon,0)))*u.deg
+        th2 = np.tile(nl_lat[:,np.newaxis],(1,np.size(smb_lon,0)))*u.deg
+        phi1 = np.tile(smb_lon[:,np.newaxis].T,(np.size(nl_lon,0),1))*u.deg
+        th1 = np.tile(smb_lat[:,np.newaxis].T,(np.size(nl_lon,0),1))*u.deg
+        [min_separation,idx_min] = compute_min_dist(phi1,th1,phi2,th2) 
+        #return sigma_min
 
-    '''if norm_mode=='fixed': #i.e. equivalent to a constant streamer belt thickness
-            norm_val = 5*np.ones(np.shape(min_separation)) #in deg
-    elif norm_mode=='SB_thickness': #Compute real streamer belt thickness from WL map
-            print("Computation of the real streamer belt thickness is not implemented yet!! Switching to fixed mode: thick=5deg.")
-            norm_val = 5*np.ones(np.shape(min_separation)) #in deg
-    else : raise ValueError(f"norm_mode {norm_mode} not in {norm_mode_all}")'''
+        '''if norm_mode=='fixed': #i.e. equivalent to a constant streamer belt thickness
+                norm_val = 5*np.ones(np.shape(min_separation)) #in deg
+        elif norm_mode=='SB_thickness': #Compute real streamer belt thickness from WL map
+                print("Computation of the real streamer belt thickness is not implemented yet!! Switching to fixed mode: thick=5deg.")
+                norm_val = 5*np.ones(np.shape(min_separation)) #in deg
+        else : raise ValueError(f"norm_mode {norm_mode} not in {norm_mode_all}")'''
 
-    min_separation = min_separation/norm_val
+        min_separation = min_separation/norm_val
 
+        return eval_WL_score(min_separation)
+    
+    elif method == 'Advanced':
+        expmap = model_map.data
+        wlmap = clean(obs_wl_map.data)
+        wlmap = Map(wlmap,obs_wl_map.meta).reproject_to(model_map.wcs).data
 
-    return eval_WL_score(min_separation)
+        model_bool = np.where(expmap>np.nanmedian(expmap),1,0).astype(bool)      
+        obs_bool = np.where(wlmap>np.nanmedian(wlmap),1,0).astype(bool)
+
+        ## Recall pixel value 1 = magnetically open/coronal hole, 
+        # 0 = magnetically closed, not coronal hole
+        tp = np.sum(model_bool & obs_bool) # True positive : pixel value 1 in model and obs
+        fp = np.sum(model_bool & ~obs_bool) # False Positive : pixel value 1 in model and 0 in obs
+        fn = np.sum(~model_bool & obs_bool) # False Negative : pixel value 0 in model and 1 in obs
+
+        p = tp/(tp+fp) # precision : fraction of predicted open pixels which are actually open
+        r = tp/(tp+fn) # recall : fraction of observed open pixels which are correctly predicted 
+        f = 2*p*r/(p+r) # f-score : harmonic mean of p and r
+        
+        return p,r,f
 
 
 def eval_WL_score(min_separation_normed) :
@@ -271,7 +265,24 @@ def eval_WL_score(min_separation_normed) :
     
     #---- Compute final score ----
     score = gain*(1 - penalty);
-    score = 100*score; #output in % (100% is a perfect model, 0% is the worst)
 
     return score
+
+def create_wl_map(center_date:datetime.datetime, path:str, coronagraph_altitude:float|int=2.5, quiet:bool=True) :
+    '''
+    Given `center_date`:`datetime.datetime`, download SOHO/LASCO
+    coronagraph images for one Carrington rotation centered on that
+    date, extract white light intensity above the limbs at the 
+    specified altitude, and assemble into a Carrington map. Save as
+    fits file.
+    '''
+    if center_date < datetime.datetime(2020,4,27): source = 'V3'
+    else: source = 'connect_tool'
+
+    [WL_fullpath,WL_date] = cmfpy.io.get_WL_map(center_date,
+                                        path,
+                                        source,
+                                        quiet=quiet)
+
+    return cmfpy.io.WLfile2map(WL_fullpath,WL_date,source)
 
