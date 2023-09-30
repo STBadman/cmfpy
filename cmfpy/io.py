@@ -236,7 +236,7 @@ def get_WL_map_local(WL_date,WL_path,version="V1.1",quiet=True):
     dates_diff = []
     for root, _, filenames in os.walk(WL_path_tmp):
         for filename in filenames:
-            if ('_LC2_5p0Rs.fits' in filename): #e.g. 'WL_CRMAP_20181002T120000_LC2_5p0Rs.fits'
+            if ('_LC2_2p5Rs.fits' in filename): #e.g. 'WL_CRMAP_20181002T120000_LC2_5p0Rs.fits'
                 current_date = datetime.strptime(filename.split('_')[2],'%Y%m%dT%H%M%S')
                 dates.append(current_date) #Time is UTC
                 files.append(os.path.join(root, filename))
