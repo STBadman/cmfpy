@@ -130,7 +130,8 @@ def pfss2flines(pfsspy_output, # pfsspy output object
 def pfss(date:str,
            delim:str=':',
            rss:int|float=2.5,
-           return_name:bool=False
+           return_name:bool=False,
+           nth:int=180,nph:int=360
            ):
     utils.type_check(locals(),pfss)
 
@@ -141,9 +142,9 @@ def pfss(date:str,
 
     magname = get_magneto(date,delim,return_name=True)
 
-    ss_name = f'ss_{rss}_{magname[6:18]}.npy'
-    ofl_name = f'ofl_{rss}_{magname[6:18]}.npy'
-    exp_name = f'exp_{rss}_{magname[6:18]}.npy'
+    ss_name = f'ss_{rss}_{nph}x{nth}_{magname[6:18]}.npy'
+    ofl_name = f'ofl_{rss}_{nph}x{nth}_{magname[6:18]}.npy'
+    exp_name = f'exp_{rss}_{nph}x{nth}_{magname[6:18]}.npy'
 
     if not os.path.exists(f'{outdir}/{ss_name}') or not os.path.exists(f'{outdir}/{ofl_name}') or not os.path.exists(f'{outdir}/{exp_name}'):
 
@@ -152,11 +153,12 @@ def pfss(date:str,
 
         ssmap = ss_model.data
 
-        flines_highres = pfss2flines(pfss_model,nth=180,nph=360)    
-        oflmap = flines_highres.polarities.reshape([180,360])
+        shape = [nth,nph]
+        flines_highres = pfss2flines(pfss_model,nth=nth,nph=nph)    
+        oflmap = flines_highres.polarities.reshape(shape)
 
-        flines_ss_highres = pfss2flines(pfss_model,nth=180,nph=360,trace_from_SS=True)
-        expmap = flines_ss_highres.expansion_factors.reshape([180,360])
+        flines_ss_highres = pfss2flines(pfss_model,nth=nth,nph=nph,trace_from_SS=True)
+        expmap = flines_ss_highres.expansion_factors.reshape(shape)
         expmap = interpolate_replace_nans(expmap, Tophat2DKernel(1), convolve=convolve, boundary='extend')
 
         ss_out = parse_map(ssmap)
