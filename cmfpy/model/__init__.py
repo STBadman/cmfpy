@@ -18,6 +18,7 @@ import sunpy.map
 import astropy.coordinates
 import astropy.units as u
 from scipy.signal import find_peaks
+from scipy.ndimage import gaussian_filter1d
 import datetime
 
 __cachepath__ = f'{__path__[0]}/__cache__'
@@ -173,14 +174,23 @@ def pfss(date:str,
     if return_name: return exp_name, ofl_name, ss_name, rss
 
 def thresholds(euvmap:sunpy.map.mapbase.GenericMap):
-    N=20
+    # Convert data to log scale
     logdata = np.log10(euvmap.data.flatten())
     logdata = logdata[np.isfinite(logdata)]
+    logdata = logdata[np.where((logdata>1) & (logdata<2.4))]
+
+    # Produce a smoothed histogram
+    N=1000
     logdata_hist, edges = np.histogram(logdata,bins=N)
-    peaks, _ = find_peaks(logdata_hist)
-    try:
-        thresh1 = (0.6*edges[peaks[1]] + 0.4*np.min(logdata))
-    except: thresh1 = (0.6*edges[peaks[0]] + 0.4*np.min(logdata))
+    interp = gaussian_filter1d(logdata_hist,5)
+
+    # Find peaks with a separation greater than 'distance'
+    distance = int(0.3/(np.max(edges)-np.min(edges))*N)
+    peaks, _ = find_peaks(interp,distance=distance)
+
+    # Get the corresponding logdata value of the peaks
+    hole_peak, avg_peak = edges[peaks[0]], edges[peaks[-1]]
+    thresh1 = (hole_peak+avg_peak)/2
 
     return thresh1, 2*thresh1
 
@@ -287,9 +297,9 @@ class CoronalModel:
         euvmappath = chmetric.create_euv_map(self.datetime, 
                                                 days_around=days_around, replace=replace)
         euvmap = sunpy.map.Map(euvmappath)
-        
-        thresh1, thresh2 = thresholds(euvmap)
+        chmap = self.chmap()
 
+        thresh1, thresh2 = thresholds(euvmap)
         ch_obs_path = chmetric.extract_obs_ch(  
                                                 euvmappath,
                                                 replace=True,
@@ -303,7 +313,7 @@ class CoronalModel:
                                             )
         
         p,r,f = chmetric.do_ch_score(self.datetime,
-                                self.chmap(),
+                                chmap,
                                 ch_obs_path,
                                 auto_interp=True)
 
@@ -314,9 +324,9 @@ class CoronalModel:
         euvmappath = chmetric.create_euv_map(datetime_euvmap, 
                                                 days_around=days_around, replace=replace)
         euvmap = sunpy.map.Map(euvmappath)
-        
-        thresh1, thresh2 = thresholds(euvmap)
+        chmap = self.chmap()
 
+        thresh1, thresh2 = thresholds(euvmap)
         ch_for_path = chmetric.extract_obs_ch(euvmappath,
                                         replace=True,
                                         ezseg_version='fortran',
@@ -354,7 +364,6 @@ class CoronalModel:
         # by using the sunpy reprojection api (this also will interpolate the map to 
         # the same resolution as the model result, which we also need for doing the
         # pixel by pixel classification )
-        chmap = self.chmap()
 
         ch_obs_cea = ch_obs_map.reproject_to(chmap.wcs)
         ch_combined = sunpy.map.Map(
