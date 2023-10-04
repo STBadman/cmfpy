@@ -19,6 +19,7 @@ from sunpy.net import Fido, attrs as a
 import sunpy.map
 import sys
 import cmfpy.utils as utils
+from skimage.exposure import match_histograms
 
 def most_prob_val_log2d(data) :
     # Assumes data vals are within range 0.1-1000
@@ -161,6 +162,23 @@ def create_euv_map(center_date,
         ### Align LH edge with Carrington 0 for consistency
         combined_map_gaussian_weights_roll = pfss_utils.roll_map(
             combined_map_gaussian_weights)
+        
+        weight = np.linspace(1,0,360)
+        weight = weight[..., None]
+        b0 = sunpy.coordinates.sun.B0(time=center_date).value
+        A = np.abs(b0/7.23)
+        k = 14/A
+
+        if b0>=0: 
+            hemisphere = combined_map_gaussian_weights_roll.data[270:]
+            weight = 50*(weight**k)/(50*weight**k+1)
+        else: 
+            hemisphere = combined_map_gaussian_weights_roll.data[:90]
+            weight = -weight + 1
+            weight = 50*(weight**k)/(50*weight**k+1)
+
+        combined = match_histograms(combined_map_gaussian_weights_roll.data,hemisphere)*weight + combined_map_gaussian_weights_roll.data*(1-weight)
+        combined_map_gaussian_weights_roll = sunpy.map.Map(combined,combined_map_gaussian_weights_roll.meta)
 
         ## Save output combined map as fits file
         combined_map_gaussian_weights_roll.save(savepath,
