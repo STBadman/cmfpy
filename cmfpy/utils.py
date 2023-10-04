@@ -7,6 +7,8 @@ import sunpy.map
 from bs4 import BeautifulSoup
 import requests
 from typing import get_type_hints
+from scipy.interpolate import NearestNDInterpolator, CloughTocher2DInterpolator, LinearNDInterpolator
+from astropy.convolution import interpolate_replace_nans, convolve, Tophat2DKernel
 
 def npy2map(npypath,datetime_npy) :
     """
@@ -86,3 +88,14 @@ def gen_dt_arr(dt_init,dt_final,cadence_days=1) :
         dt_list.append(dt_init)
         dt_init += datetime.timedelta(days=cadence_days)
     return np.array(dt_list)
+
+def replace_nans(data,interpolator=LinearNDInterpolator):
+    # first remove the majority of nans from the body of the image
+    mask = np.where(np.isfinite(data))
+    interp = interpolator(np.transpose(mask), data[mask])
+    data = interp(*np.indices(data.shape))
+
+    # remove any nans on the edge of the image
+    data = interpolate_replace_nans(data, Tophat2DKernel(1), convolve=convolve, boundary='extend')
+
+    return data

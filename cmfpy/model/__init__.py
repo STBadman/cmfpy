@@ -15,7 +15,6 @@ import numpy as np
 
 import pfsspy
 import sunpy.map
-from astropy.convolution import Tophat2DKernel, interpolate_replace_nans, convolve
 import astropy.coordinates
 import astropy.units as u
 from scipy.signal import find_peaks
@@ -160,7 +159,7 @@ def pfss(date:str,
 
         flines_ss_highres = pfss2flines(pfss_model,nth=nth,nph=nph,trace_from_SS=True)
         expmap = flines_ss_highres.expansion_factors.reshape(shape)
-        expmap = interpolate_replace_nans(expmap, Tophat2DKernel(1), convolve=convolve, boundary='extend')
+        expmap = utils.replace_nans(expmap)
 
         ss_out = parse_map(ssmap)
         ofl_out = parse_map(oflmap)

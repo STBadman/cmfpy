@@ -72,7 +72,7 @@ def rm_artifacts(data:np.ndarray|list, width:tuple|list|np.ndarray):
     filtered = np.where(artifacts, np.nan, data)
 
     #Fill in the nans
-    filtered = interpolate_replace_nans(filtered, Gaussian2DKernel(2), convolve=convolve, boundary='extend')
+    filtered = utils.replace_nans(filtered)
 
     #Reenter nans from original data
     #filtered = np.where(data_nans, np.nan, filtered)
@@ -101,7 +101,6 @@ def clean(wldata:np.ndarray|list, width=(1,10)):
 
     # remove map artifacts
     wldata = rm_artifacts(wldata, width)
-    wldata = interpolate_replace_nans(wldata, Gaussian2DKernel(5), convolve=convolve, boundary='extend')
 
     # apply a weighted blur
     blur = convolve(wldata, Gaussian2DKernel(1), boundary='extend')
@@ -216,10 +215,11 @@ def compute_WL_score(model_map,obs_wl_map,method='Simple') :
     elif method == 'Advanced':
         expmap = model_map.data
         wlmap = clean(obs_wl_map.data)
+
         wlmap = Map(wlmap,obs_wl_map.meta).reproject_to(model_map.wcs).data
 
-        model_bool = np.where(expmap>np.nanmedian(expmap),1,0).astype(bool)      
-        obs_bool = np.where(wlmap>np.nanmedian(wlmap),1,0).astype(bool)
+        model_bool = np.where(expmap>np.median(expmap),1,0).astype(bool)      
+        obs_bool = np.where(wlmap>np.median(wlmap),1,0).astype(bool)
 
         ## Recall pixel value 1 = magnetically open/coronal hole, 
         # 0 = magnetically closed, not coronal hole
