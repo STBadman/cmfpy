@@ -286,7 +286,10 @@ def download_br_data(interval, body):
             #{"probe":"b"}
         )
     }
+    
     dl_func,kwargs = dl_funcs_and_kwargs.get(body)
+    print(dl_func)
+    print(kwargs)
     return dl_func(trange=interval,**kwargs,notplot=True)
 
 def download_vr_data(interval, body):

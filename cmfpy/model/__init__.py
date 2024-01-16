@@ -186,11 +186,19 @@ def thresholds(euvmap:sunpy.map.mapbase.GenericMap):
 
     # Find peaks with a separation greater than 'distance'
     distance = int(0.3/(np.max(edges)-np.min(edges))*N)
-    peaks, _ = find_peaks(interp,distance=distance)
+    height = 10
+    peaks, _ = find_peaks(interp,distance=distance,height=height)
 
     # Get the corresponding logdata value of the peaks
-    hole_peak, avg_peak = edges[peaks[0]], edges[peaks[-1]]
-    thresh1 = (hole_peak+avg_peak)/2
+    hole_peak, max_peak = edges[peaks[0]], edges[np.argmax(interp)]
+
+    if peaks.size < 2: thresh1 = 0.9*max_peak
+    else: thresh1 = 0.6*hole_peak+0.4*max_peak
+
+    plt.figure()
+    plt.hist(logdata,N)
+    plt.xlabel('log(Flux)')
+    plt.ylabel('Frequency')
 
     return thresh1, 2*thresh1
 
@@ -402,11 +410,40 @@ class CoronalModel:
         wlmap = wlmetric.create_wl_map(self.datetime,path,coronagraph_altitude=self.rss)
         
         if method == 'Advanced':
+            '''fig = plt.figure(figsize=(10,5))
+            ax = fig.add_subplot(projection=wlmap.wcs)
+
+            wlmap.plot(cmap="gray",axes=ax,norm=mpl.colors.LogNorm())
+            ax.set_title(f'WLmap: {wlmap.meta["date-obs"][:-13]}')'''
+
             wlmap_clean = wlmetric.clean(wlmap.data)
-            wlmap_clean = sunpy.map.Map(wlmap_clean,wlmap.meta).reproject_to(self.expmap.wcs).data
+            wlmap_clean = sunpy.map.Map(wlmap_clean,wlmap.meta).reproject_to(self.expmap.wcs)
+
+            '''fig = plt.figure(figsize=(10,5))
+            ax = fig.add_subplot(projection=wlmap_clean.wcs)
+
+            wlmap_clean.plot(cmap="gray",axes=ax,norm=mpl.colors.LogNorm())
+            ax.set_title(f'WLmap-clean: {wlmap_clean.meta["date-obs"][:-13]}')'''
+
+            wlmap_clean = wlmap_clean.data
 
             model_bool = np.where(self.expmap.data>np.nanmedian(self.expmap.data),1,0)      
             obs_bool = np.where(wlmap_clean>np.nanmedian(wlmap_clean),1,0)
+
+            modelmap_bool = sunpy.map.Map(model_bool,self.expmap.meta)
+            obsmap_bool = sunpy.map.Map(obs_bool,wlmap.meta)
+
+            fig = plt.figure(figsize=(10,5))
+            ax = fig.add_subplot(projection=modelmap_bool.wcs)
+
+            modelmap_bool.plot(cmap="gray",axes=ax)
+            ax.set_title(f'WLmap - Model: {modelmap_bool.meta["date-obs"][:-13]}')
+
+            fig = plt.figure(figsize=(10,5))
+            ax = fig.add_subplot(projection=obsmap_bool.wcs)
+
+            obsmap_bool.plot(cmap="gray",axes=ax)
+            ax.set_title(f'WLmap - Observed: {obsmap_bool.meta["date-obs"][:-13]}')
 
             diffmap = sunpy.map.Map(model_bool+obs_bool,self.expmap.meta)
             

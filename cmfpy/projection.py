@@ -12,7 +12,7 @@ import sys
 
 # Load in PSP/SolO Spice Kernels (download happens automatically)
 kernels = []
-SC_ALL = {"psp":"SOLAR PROBE PLUS",
+SC_ALL = {#"psp":"SOLAR PROBE PLUS",
           "solar orbiter":"SOLO",
           "stereo-a":"STEREO AHEAD", 
           "stereo-b":"STEREO BEHIND"}

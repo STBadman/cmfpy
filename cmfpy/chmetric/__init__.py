@@ -163,22 +163,7 @@ def create_euv_map(center_date,
         combined_map_gaussian_weights_roll = pfss_utils.roll_map(
             combined_map_gaussian_weights)
         
-        weight = np.linspace(1,0,360)
-        weight = weight[..., None]
-        b0 = sunpy.coordinates.sun.B0(time=center_date).value
-        A = np.abs(b0/7.23)
-        k = 14/A
-
-        if b0>=0: 
-            hemisphere = combined_map_gaussian_weights_roll.data[270:]
-            weight = 50*(weight**k)/(50*weight**k+1)
-        else: 
-            hemisphere = combined_map_gaussian_weights_roll.data[:90]
-            weight = -weight + 1
-            weight = 50*(weight**k)/(50*weight**k+1)
-
-        combined = match_histograms(combined_map_gaussian_weights_roll.data,hemisphere)*weight + combined_map_gaussian_weights_roll.data*(1-weight)
-        combined_map_gaussian_weights_roll = sunpy.map.Map(combined,combined_map_gaussian_weights_roll.meta)
+        combined_map_gaussian_weights_roll = hemispheric_correction(combined_map_gaussian_weights_roll,center_date)
 
         ## Save output combined map as fits file
         combined_map_gaussian_weights_roll.save(savepath,
@@ -186,6 +171,26 @@ def create_euv_map(center_date,
 
     ## Return output map filename
     return savepath
+
+def hemispheric_correction(map,datetime):
+    weight = np.linspace(1,0,360)
+    weight = weight[..., None]
+    b0 = sunpy.coordinates.sun.B0(time=datetime).value
+    A = np.abs(b0/7.23)
+    k = 14/A
+
+
+    if b0>=0: 
+        hemisphere = map.data[270:]
+        weight = 50*(weight**k)/(50*weight**k+1)
+    else: 
+        hemisphere = map.data[:90]
+        weight = -weight + 1
+        weight = 50*(weight**k)/(50*weight**k+1)
+
+    combined = match_histograms(map.data,hemisphere)*weight + map.data*(1-weight)
+    return sunpy.map.Map(combined,map.meta)
+
 
 def extract_obs_ch(euv_map_path,
                    replace=False,
