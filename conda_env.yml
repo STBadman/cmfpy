@@ -16,12 +16,11 @@ dependencies:
   - pymdown-extensions
   - python == 3.11.0
   - scipy == 1.10.1
-  - sunpy == 4.1.2
+  - sunpy == 5.1.0
   - python-wget
   - pip:
     - pfsspy == 1.2.0
     - ipykernel
-    - astrospice == 0.2.0
     - heliopy == 1.0.0
     - streamtracer
     - pyspedas

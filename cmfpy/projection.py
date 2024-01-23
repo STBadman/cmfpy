@@ -4,35 +4,22 @@ Multipurpose helper functions used throughout this repository.
 import astropy.constants as const
 from astropy.coordinates import SkyCoord
 import astropy.units as u
-import astrospice
 import datetime
 import numpy as np
 import sunpy.map
-import sys
+from sunpy.coordinates import spice 
+from sunpy.data import cache
 
 # Load in PSP/SolO Spice Kernels (download happens automatically)
-kernels = []
-SC_ALL = {#"psp":"SOLAR PROBE PLUS",
-          "solar orbiter":"SOLO",
-          "stereo-a":"STEREO AHEAD", 
-          "stereo-b":"STEREO BEHIND"}
-SUPPORTED_BODIES = {**SC_ALL,"earth":"EARTH","L1":"EARTH"}
-coverage_dict = {}
-for sc in SC_ALL.keys()  :
-    try : 
-        k_add = astrospice.registry.get_kernels(sc,'predict')
-        kernels.append(k_add)
-    except : 
-        try : 
-            k_add = astrospice.registry.get_kernels(sc,'recon')
-            kernels.append(k_add)
-        except : sys.stdout.write(f"No kernels located for {sc}")
-    coverage_dict[sc] = [k.coverage(k.bodies[0].name) for k in k_add]
-COVERAGE_LIMITS = {}
-for sc, coverages in coverage_dict.items() :
-    tmin = np.nanmin([c[0] for c in coverages])
-    tmax = np.nanmax([c[1] for c in coverages])
-    COVERAGE_LIMITS[sc] = [tmin,tmax]
+_jpl_ephem = "de440s"
+kernel_urls = [f"https://naif.jpl.nasa.gov/pub/naif/generic_kernels/spk/planets/{_jpl_ephem}.bsp"]
+
+kernel_files = [cache.download(url) for url in kernel_urls]
+
+SUPPORTED_BODIES = {"earth":"EARTH","L1":"EARTH"}
+
+spice.initialize(kernel_files)
+spice.install_frame('IAU_SUN')
 
 def create_carrington_trajectory(datetime_array,body,obstime_ref=None) :
 
@@ -43,12 +30,9 @@ def create_carrington_trajectory(datetime_array,body,obstime_ref=None) :
 
     ### Error handle if requested daterange is out of range of spice coverage
     if body in ["L1","earth"] : pass
-    else : 
-        assert (datetime_array[0] > COVERAGE_LIMITS[body][0].datetime) & (datetime_array[-1] < COVERAGE_LIMITS[body][-1].datetime), \
-            f"Requested timerange outside of SPICE coverage for body '{body}' : {[c.datetime for c in COVERAGE_LIMITS[body]]}"
 
     ### Create SkyCoord for PSP in the inertial (J2000) frame
-    trajectory_inertial = astrospice.generate_coords(
+    trajectory_inertial = spice.get_body(
     SUPPORTED_BODIES.get(body), datetime_array
     )
 

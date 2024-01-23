@@ -46,8 +46,6 @@ def listhtml(url:str, contains:str='', include_url:bool=True):
     page = requests.get(url).text
     soup = BeautifulSoup(page, 'html.parser')
 
-    print(page)
-
     out = [node.get('href') for node in soup.find_all('a')]
     if include_url: out = [f'{url}{f}' for f in out if contains in f]
     else: out = [f'{f}' for f in out if contains in f]
