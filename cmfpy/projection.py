@@ -9,16 +9,39 @@ import numpy as np
 import sunpy.map
 from sunpy.coordinates import spice 
 from sunpy.data import cache
+from cmfpy.utils import listhtml 
+import os
 
 # Load in PSP/SolO Spice Kernels (download happens automatically)
+SC_ALL = {"psp":"SOLAR PROBE PLUS",
+          "solar orbiter":"SOLO",
+          "stereo-a":"STEREO AHEAD", 
+          "stereo-b":"STEREO BEHIND"}
+
 _jpl_ephem = "de440s"
-kernel_urls = [f"https://naif.jpl.nasa.gov/pub/naif/generic_kernels/spk/planets/{_jpl_ephem}.bsp"]
+_sc_format = ['solo_ANC_soc-orbit-stp', '_', '_']
+_sc_all = [False, True, True]
+_sc_dirs = ['http://spiftp.esac.esa.int/data/SPICE/SOLAR-ORBITER/kernels/spk/',
+            'https://soho.nascom.nasa.gov/solarsoft/stereo/gen/data/spice/depm/ahead/',
+            'https://soho.nascom.nasa.gov/solarsoft/stereo/gen/data/spice/depm/behind/']
+_sc_urls = []
 
-kernel_files = [cache.download(url) for url in kernel_urls]
+for i, dir in enumerate(_sc_dirs):
+    url = listhtml(dir,_sc_format[i])
+    if not _sc_all[i]: url = [url[-1]]
+    _sc_urls = _sc_urls + url
 
-SUPPORTED_BODIES = {"earth":"EARTH","L1":"EARTH"}
+_kernel_urls = _sc_urls + [f"https://naif.jpl.nasa.gov/pub/naif/generic_kernels/spk/planets/{_jpl_ephem}.bsp"]
 
-spice.initialize(kernel_files)
+_kernel_files = [cache.download(url) for url in _kernel_urls]
+
+_psp_path = [f'{os.path.dirname(__file__)}/nlmetric/data/psp/spice/spp_nom_20180812_20250831_v034_RO1_TCM1.bsp']
+
+_kernel_files = _psp_path + _kernel_files
+
+SUPPORTED_BODIES = {**SC_ALL,"earth":"EARTH","L1":"EARTH"}
+
+spice.initialize(_kernel_files)
 spice.install_frame('IAU_SUN')
 
 def create_carrington_trajectory(datetime_array,body,obstime_ref=None) :

@@ -263,7 +263,7 @@ def download_br_data(interval, body):
             # pyspedas.wind.mfi,
             # {"varnames":"BGSE"}
             pyspedas.omni.data,
-            {"varnames":["BX_GSE",'Vx']}
+            {"varnames":["BX_GSE"]}
             ),
         "solar orbiter":(
             pyspedas.solo.mag,
@@ -298,6 +298,26 @@ def download_vr_data(interval, body):
             pyspedas.omni.data,
             {"varnames":'Vx'}
             ),
+        "solar orbiter":(
+            pyspedas.solo.swa,
+            {"varnames":'V_RTN','datatype':'pas-grnd-mom'}
+            ),
+        "psp":(
+            pyspedas.psp.spi,
+            {"varnames":"VEL_RTN_SUN","datatype":"sf00_l3_mom"}
+            ),
+        "stereo-a":(
+            pyspedas.stereo.plastic,
+            {"probe":"a","varnames":"proton_Vr_RTN"}
+            #pyspedas.stereo.mag, #replace when pyspedas pr comes through
+            #{"probe":"a"}
+        ),
+        "stereo-b":(
+            pyspedas.stereo.plastic,
+            {"probe":"b","varnames":"proton_Vr_RTN"}
+            #pyspedas.stereo.mag, #replace when pyspedas pr comes through
+            #{"probe":"a"}
+        ),
     }
     dl_func,kwargs = dl_funcs_and_kwargs.get(body)
     return dl_func(trange=interval,**kwargs,notplot=True)

@@ -10,7 +10,7 @@ import datetime
 import numpy as np
 import cmfpy.utils as utils
 import cmfpy.projection as projection
-import cmfpy.io 
+import cmfpy.io as io
 import os
 
 from scipy.interpolate import interp1d
@@ -76,7 +76,7 @@ def create_polarity_obs(center_date,body,return_br,
         )
     ### Change pyspedas directory to nlmetric/data
 
-    data = cmfpy.io.download_br_data(carrington_interval, body)
+    data = io.download_br_data(carrington_interval, body)
 
     if body == "L1" : 
         times_medians,br_medians = make_hourly_medians(
@@ -127,7 +127,7 @@ def create_polarity_model(model_NL_map, center_date, body,
 
     if constant_vr == True: vr_arr = None
     else:
-        data = cmfpy.io.download_vr_data(carrington_interval, body)
+        data = io.download_vr_data(carrington_interval, body)
 
         if body == "L1" :
             times_medians,vr_medians = make_hourly_medians(
@@ -136,7 +136,13 @@ def create_polarity_model(model_NL_map, center_date, body,
             )
 
             vr_medians *= -1
-        else :
+        elif (body == 'stereo-a') or (body == 'stereo-b'):
+            times_medians,vr_medians = make_hourly_medians(
+                data[list(data.keys())[0]]['x'],
+                data[list(data.keys())[0]]['y'],
+            )
+        else:
+            print(data)
             times_medians,vr_medians = make_hourly_medians(
                 data[list(data.keys())[0]]['x'],
                 data[list(data.keys())[0]]['y'][:,0],
@@ -148,7 +154,7 @@ def create_polarity_model(model_NL_map, center_date, body,
 
         vr_arr = interp1d(utils.datetime2unix(times_medians),
                          vr_medians,
-                         bounds_error=False)(utils.datetime2unix(datetimes_hourly))*u.km/u.s
+                         bounds_error=False,fill_value=360)(utils.datetime2unix(datetimes_hourly))*u.km/u.s
     
     carrington_trajectory = projection.create_carrington_trajectory(
         datetimes_hourly,body,obstime_ref=center_date
